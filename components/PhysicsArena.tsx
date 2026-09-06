@@ -38,6 +38,39 @@ type Matrix = {
   SHORT: Record<Difficulty, number>;
   ESSAY: Record<Difficulty, number>;
 };
+type Submission = {
+  id?: string;
+  exam_id: string;
+  student_name: string;
+  student_class: string;
+  student_school: string;
+  auto_score: number;
+  essay_score?: number | null;
+  final_score?: number | null;
+  answers_data: Record<string, any>;
+  submitted_at: string;
+};
+
+function getQuestionAutoScore(q: Question, answer: any): number {
+  if (q.section === "MCQ") return answer === q.correctOption ? q.points : 0;
+  if (q.section === "TF") return scoreTF(answer, q.subTfs, q.points);
+  if (q.section === "SHORT") {
+    const n = Number(answer);
+    const key = Number(q.shortAnswer);
+    return Number.isFinite(n) && Number.isFinite(key) &&
+      Math.abs(n - key) <= Number(q.tolerance || 0) ? q.points : 0;
+  }
+  return 0;
+}
+
+function isQuestionFullyCorrect(q: Question, answer: any): boolean {
+  if (q.section === "MCQ") return answer === q.correctOption;
+  if (q.section === "SHORT") return getQuestionAutoScore(q, answer) > 0;
+  if (q.section === "TF") {
+    return !!q.subTfs?.length && q.subTfs.every(sub => answer?.[sub.id] !== undefined && answer[sub.id] === sub.key);
+  }
+  return false;
+}
 const seed: Question[] = [
   { 
     id: "KHTN001", 
@@ -195,29 +228,50 @@ export default function PhysicsArena() {
   const [studentClass, setStudentClass] = useState("");
   const [studentSchool, setStudentSchool] = useState("");
   const [seconds, setSeconds] = useState(45 * 60);
-  const [essayScores] = useState<Record<string, number>>({});
+  const [essayScores, setEssayScores] = useState<Record<string, number>>({});
   const [notice, setNotice] = useState("");
+  const [antiCheatWarnings, setAntiCheatWarnings] = useState(0);
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const deadlineRef = useRef<number | null>(null);
+  const submitExamRef = useRef<() => void>(() => undefined);
+  useEffect(() => { answersRef.current = answers; }, [answers]);
+  useEffect(() => { examRef.current = exam; }, [exam]);
+
+  // Khi học sinh vào chế độ làm bài trực tiếp (không qua link), bắt đầu đồng hồ tại đây.
   useEffect(() => {
-    answersRef.current = answers;
-  }, [answers]);
-  useEffect(() => {
-    examRef.current = exam;
-  }, [exam]);
-  useEffect(() => {
-    if (mode === "student" && exam.length > 0 && !submitted) {
-      const timer = setInterval(() => {
-        setSeconds(prev => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            submitExam();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      return () => clearInterval(timer);
+    if (mode === "student" && exam.length > 0 && !submitted && !deadlineRef.current) {
+      const startSeconds = Math.max(1, seconds || examMinutes * 60);
+      deadlineRef.current = Date.now() + startSeconds * 1000;
+      setSeconds(startSeconds);
     }
-  }, [mode, exam, submitted]);
+  }, [mode, exam.length, submitted]);
+
+  // Đồng hồ dùng thời điểm kết thúc tuyệt đối thay vì giảm biến đếm mỗi giây.
+  // Cách này tránh trôi thời gian khi tab bị treo, máy chậm hoặc mạng yếu.
+  useEffect(() => {
+    if (mode !== "student" || exam.length === 0 || submitted || !deadlineRef.current) return;
+    const tick = () => {
+      const remain = Math.max(0, Math.ceil((deadlineRef.current! - Date.now()) / 1000));
+      setSeconds(remain);
+      if (remain <= 0) submitExamRef.current();
+    };
+    tick();
+    const timer = window.setInterval(tick, 250);
+    return () => window.clearInterval(timer);
+  }, [mode, exam.length, submitted]);
+
+  // Cảnh báo khi học sinh rời tab/trình duyệt trong lúc làm bài.
+  useEffect(() => {
+    if (mode !== "student" || exam.length === 0 || submitted) return;
+    const onVisibility = () => {
+      if (document.hidden) {
+        setAntiCheatWarnings(v => v + 1);
+        setNotice("Cảnh báo: bạn vừa rời khỏi màn hình làm bài. Hệ thống đã ghi nhận.");
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [mode, exam.length, submitted]);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const examId = params.get("exam");
@@ -225,34 +279,31 @@ export default function PhysicsArena() {
       setMode("student");
       setExamCodeId(examId);
       async function fetchExamFromCloud() {
-        const { data } = await supabase.from('exams').select('questions_data, duration').eq('id', examId).single();
-        if (data && data.questions_data) {
-          setExam(data.questions_data as Question[]);
-          if (data.duration) {
-            setExamMinutes(data.duration);
-            setSeconds(data.duration * 60);
-          }
+        if (!supabase) {
+          setNotice("Chưa cấu hình Supabase. Hãy kiểm tra NEXT_PUBLIC_SUPABASE_URL và NEXT_PUBLIC_SUPABASE_ANON_KEY trên Vercel.");
+          return;
+        }
+        const { data, error } = await supabase.from("exams").select("questions_data, duration").eq("id", examId).single();
+        if (error) {
+          setNotice("Không tải được đề thi: " + error.message);
+          return;
+        }
+        if (data?.questions_data) {
+          const loadedExam = data.questions_data as Question[];
+          const duration = Number(data.duration || 45);
+          setExam(loadedExam);
+          setExamMinutes(duration);
+          deadlineRef.current = Date.now() + duration * 60 * 1000;
+          setSeconds(duration * 60);
           setNotice(`Đã tải thành công đề thi (${examId}) cho học sinh.`);
         } else {
-          alert("Không tìm thấy mã đề thi này hoặc link không hợp lệ!");
+          setNotice("Không tìm thấy mã đề thi này hoặc link không hợp lệ.");
         }
       }
       fetchExamFromCloud();
     }
   }, []);
-  const autoScore = useMemo(() => {
-    return exam.reduce((s, q) => {
-      const a = answers[q.id];
-      if (q.section === "MCQ") return s + (a === q.correctOption ? q.points : 0);
-      if (q.section === "TF") return s + scoreTF(a, q.subTfs, q.points);
-      if (q.section === "SHORT") {
-        const n = Number(a); 
-        const key = Number(q.shortAnswer);
-        return s + (Number.isFinite(n) && Math.abs(n - key) <= Number(q.tolerance || 0) ? q.points : 0);
-      }
-      return s;
-    }, 0);
-  }, [exam, answers]);
+  const autoScore = useMemo(() => exam.reduce((sum, q) => sum + getQuestionAutoScore(q, answers[q.id]), 0), [exam, answers]);
   
   const essayTotalScore = Object.values(essayScores).reduce((a, b) => a + b, 0);
   const finalScore = autoScore + essayTotalScore;
@@ -280,6 +331,8 @@ export default function PhysicsArena() {
     setExam(randomized);
     setAnswers({});
     setSubmitted(false);
+    setEssayScores({});
+    deadlineRef.current = null;
     setSeconds(examMinutes * 60);
     setTab("exam");
     setNotice(
@@ -289,11 +342,15 @@ export default function PhysicsArena() {
     );
   }
   async function handlePublishAndGetLink() {
+    if (!supabase) {
+      alert("Chưa cấu hình Supabase. Hãy thêm NEXT_PUBLIC_SUPABASE_URL và NEXT_PUBLIC_SUPABASE_ANON_KEY trên Vercel.");
+      return;
+    }
     if (exam.length === 0) {
       alert("Chưa có đề thi nào được tạo! Thầy hãy bấm 'Tạo đề thi' trước.");
       return;
     }
-    const examCode = "KHTN_" + Math.random().toString(36).substring(2, 8).toUpperCase();
+    const examCode = "KHTN_" + crypto.randomUUID().split("-").join("").substring(0, 8).toUpperCase();
     setExamCodeId(examCode);
     const { error } = await supabase.from('exams').insert([{ 
       id: examCode, 
@@ -334,27 +391,15 @@ export default function PhysicsArena() {
   }
   async function submitExam() {
     if (submitted) return;
-
     const currentAnswers = answersRef.current;
     const currentExam = examRef.current;
-    const score = currentExam.reduce((s, q) => {
-      const a = currentAnswers[q.id];
-      if (q.section === "MCQ") return s + (a === q.correctOption ? q.points : 0);
-      if (q.section === "TF") return s + scoreTF(a, q.subTfs, q.points);
-      if (q.section === "SHORT") {
-        const n = Number(a);
-        const key = Number(q.shortAnswer);
-        return s + (Number.isFinite(n) && Number.isFinite(key) &&
-          Math.abs(n - key) <= Number(q.tolerance || 0) ? q.points : 0);
-      }
-      return s;
-    }, 0);
-
+    const score = currentExam.reduce((sum, q) => sum + getQuestionAutoScore(q, currentAnswers[q.id]), 0);
     setSubmitted(true);
+    setSeconds(0);
     setTab("grading");
 
     if (!supabase) {
-      setNotice("Bài đã được chấm trên máy, nhưng chưa lưu Cloud vì Supabase chưa được cấu hình.");
+      setNotice("Bài đã được chấm trên máy. Chưa lưu Cloud vì Supabase chưa được cấu hình.");
       return;
     }
 
@@ -364,6 +409,8 @@ export default function PhysicsArena() {
       student_class: studentClass.trim(),
       student_school: studentSchool.trim(),
       auto_score: score,
+      essay_score: 0,
+      final_score: score,
       answers_data: currentAnswers,
       submitted_at: new Date().toISOString()
     }]);
@@ -373,9 +420,36 @@ export default function PhysicsArena() {
       setNotice("Bài đã được chấm nhưng chưa lưu được lên Cloud: " + error.message);
       return;
     }
-
-    setNotice("Bài đã được nộp, chấm tự động và lưu lên hệ thống thành công!");
+    setNotice("Bài đã được nộp, chấm tự động và lưu trên Supabase thành công!");
   }
+  submitExamRef.current = submitExam;
+
+  async function loadSubmissions() {
+    if (!supabase || !examCodeId) {
+      setNotice("Chưa có kết nối Supabase hoặc chưa có mã đề.");
+      return;
+    }
+    const { data, error } = await supabase.from("student_submissions")
+      .select("id, exam_id, student_name, student_class, student_school, auto_score, essay_score, final_score, answers_data, submitted_at")
+      .eq("exam_id", examCodeId)
+      .order("submitted_at", { ascending: false });
+    if (error) { setNotice("Không tải được kết quả: " + error.message); return; }
+    setSubmissions((data || []) as Submission[]);
+  }
+
+  function exportSubmissionsExcel() {
+    if (!submissions.length) { setNotice("Chưa có kết quả để xuất Excel."); return; }
+    const rows = submissions.map((s, i) => ({
+      STT: i + 1, Họ_tên: s.student_name, Lớp: s.student_class, Trường: s.student_school,
+      Điểm_tự_động: s.auto_score, Điểm_tự_luận: s.essay_score ?? 0, Tổng_điểm: s.final_score ?? s.auto_score,
+      Thời_gian_nộp: s.submitted_at
+    }));
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, "Kết quả");
+    XLSX.writeFile(wb, `Ket_qua_${examCodeId || "KHTN"}.xlsx`);
+  }
+
   return (
     <main className="app-shell" style={{ 
       fontFamily: "Inter, system-ui, Arial, sans-serif", 
@@ -648,12 +722,27 @@ export default function PhysicsArena() {
             )}
             {tab === "grading" && (
               <div>
-                <h2 style={{ fontSize: "20px", color: "#0f766e", marginBottom: "10px" }}>Chấm bài & Tổng kết điểm</h2>
-                <p style={{ color: "#64748b", fontSize: "13px", marginBottom: "20px" }}>Xem kết quả tự động chấm điểm cho học sinh.</p>
-                <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "8px", border: "1px solid #cbd5e1" }}>
-                  <div style={{ fontSize: "16px", fontWeight: "700", color: "#0f766e", marginBottom: "10px" }}>Điểm hệ thống tự chấm: {autoScore.toFixed(2)}</div>
-                  <div style={{ fontSize: "18px", fontWeight: "900", color: "#047857" }}>Tổng điểm bài thi: {finalScore.toFixed(2)}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <div><h2 style={{ fontSize: "20px", color: "#0f766e", marginBottom: "6px" }}>Chấm bài & Kết quả</h2>
+                  <p style={{ color: "#64748b", fontSize: "13px" }}>Tải kết quả từ Supabase, chấm tự luận và xuất Excel.</p></div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={loadSubmissions} style={{ padding: "9px 12px", borderRadius: 8, border: "1px solid #5eead4", background: "#f0fdf4", cursor: "pointer" }}>🔄 Tải kết quả</button>
+                    <button onClick={exportSubmissionsExcel} style={{ padding: "9px 12px", borderRadius: 8, border: "none", background: "#0284c7", color: "#fff", cursor: "pointer" }}>📊 Xuất Excel</button>
+                  </div>
                 </div>
+                <div style={{ marginTop: 18, background: "#f8fafc", padding: 16, borderRadius: 8, border: "1px solid #cbd5e1" }}>
+                  <b>Đề hiện tại: {examCodeId || "chưa xuất mã"}</b> · Điểm tự động của bài đang xem: <b>{autoScore.toFixed(2)}</b>
+                </div>
+                {submissions.length > 0 && <div style={{ overflowX: "auto", marginTop: 16 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead><tr style={{ background: "#f8fafc" }}>{["STT","Họ tên","Lớp","Điểm tự động","Tự luận","Tổng","Nộp lúc"].map(h => <th key={h} style={{ padding: 9, border: "1px solid #cbd5e1", textAlign: "left" }}>{h}</th>)}</tr></thead>
+                    <tbody>{submissions.map((s,i)=><tr key={s.id || i}>
+                      <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{i+1}</td><td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{s.student_name}</td><td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{s.student_class}</td>
+                      <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{Number(s.auto_score || 0).toFixed(2)}</td><td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{Number(s.essay_score || 0).toFixed(2)}</td>
+                      <td style={{ padding: 9, border: "1px solid #cbd5e1", fontWeight: 800 }}>{Number(s.final_score ?? s.auto_score ?? 0).toFixed(2)}</td><td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{new Date(s.submitted_at).toLocaleString("vi-VN")}</td>
+                    </tr>)}</tbody>
+                  </table>
+                </div>}
               </div>
             )}
             {tab === "stats" && (
@@ -760,11 +849,109 @@ export default function PhysicsArena() {
               )}
             </div>
           ) : (
-            <div style={{ textAlign: "center", padding: "20px" }}>
-              <h2 style={{ color: "#0f766e" }}>🎉 Hoàn thành bài thi!</h2>
-              <p style={{ color: "#64748b" }}>Cảm ơn bạn đã hoàn thành bài kiểm tra Khoa học tự nhiên.</p>
-              <div style={{ background: "#f0fdf4", border: "1px solid #5eead4", padding: "16px", borderRadius: "8px", display: "inline-block", marginTop: "10px" }}>
-                <span style={{ fontSize: "16px", fontWeight: "700", color: "#0f766e" }}>Điểm trắc nghiệm tự động: {autoScore.toFixed(2)} điểm</span>
+            <div style={{ padding: "10px 0" }}>
+              <div style={{ textAlign: "center", padding: "10px 10px 22px" }}>
+                <h2 style={{ color: "#0f766e", marginBottom: "6px" }}>🎉 Hoàn thành bài thi!</h2>
+                <p style={{ color: "#64748b", marginTop: 0 }}>Học sinh có thể xem lại điểm số và toàn bộ bài làm của mình dưới đây.</p>
+                <div style={{ display: "flex", justifyContent: "center", gap: "12px", flexWrap: "wrap", marginTop: "14px" }}>
+                  <div style={{ background: "#f0fdf4", border: "1px solid #5eead4", padding: "14px 20px", borderRadius: "10px", minWidth: "190px" }}>
+                    <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>ĐIỂM TRẮC NGHIỆM</div>
+                    <strong style={{ fontSize: "24px", color: "#0f766e" }}>{autoScore.toFixed(2)}</strong>
+                  </div>
+                  <div style={{ background: "#eff6ff", border: "1px solid #93c5fd", padding: "14px 20px", borderRadius: "10px", minWidth: "190px" }}>
+                    <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>TỔNG ĐIỂM HIỆN TẠI</div>
+                    <strong style={{ fontSize: "24px", color: "#1d4ed8" }}>{finalScore.toFixed(2)}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                {exam.map((q, i) => {
+                  const userAnswer = answers[q.id];
+                  const isEssay = q.section === "ESSAY";
+                  let isCorrect = false;
+                  if (q.section === "MCQ") isCorrect = userAnswer === q.correctOption;
+                  else if (q.section === "SHORT") {
+                    const n = Number(userAnswer);
+                    const key = Number(q.shortAnswer);
+                    isCorrect = Number.isFinite(n) && Math.abs(n - key) <= Number(q.tolerance || 0);
+                  } else if (q.section === "TF" && q.subTfs) {
+                    isCorrect = q.subTfs.every(sub => userAnswer?.[sub.id] !== undefined && userAnswer[sub.id] === sub.key);
+                  }
+
+                  return (
+                    <div key={q.id} style={{ border: `2px solid ${isEssay ? "#cbd5e1" : isCorrect ? "#86efac" : "#fecaca"}`, borderRadius: "10px", background: "#fff", overflow: "hidden" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", padding: "11px 14px", background: isEssay ? "#f8fafc" : isCorrect ? "#f0fdf4" : "#fef2f2" }}>
+                        <strong style={{ color: "#0f766e" }}>Câu {i + 1}</strong>
+                        {isEssay ? (
+                          <span style={{ fontSize: "12px", fontWeight: "700", color: "#64748b" }}>✍️ Chờ giáo viên chấm</span>
+                        ) : isCorrect ? (
+                          <span style={{ fontSize: "13px", fontWeight: "800", color: "#15803d" }}>✓ Đúng</span>
+                        ) : (
+                          <span style={{ fontSize: "13px", fontWeight: "800", color: "#dc2626" }}>✕ Sai</span>
+                        )}
+                      </div>
+
+                      <div style={{ padding: "14px" }}>
+                        <div style={{ fontWeight: "700", marginBottom: "10px", color: "#1e293b" }}>{q.content}</div>
+                        {q.imageUrl && <img src={q.imageUrl} alt="minh họa" style={{ maxWidth: "100%", maxHeight: "220px", borderRadius: "6px", marginBottom: "10px" }} />}
+
+                        {q.section === "MCQ" && q.options && (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
+                            {q.options.map(opt => {
+                              const selected = userAnswer === opt.key;
+                              const wrongSelected = selected && opt.key !== q.correctOption;
+                              const correctSelected = selected && opt.key === q.correctOption;
+                              return (
+                                <div key={opt.key} style={{ padding: "9px 11px", borderRadius: "7px", border: `1px solid ${wrongSelected ? "#fca5a5" : correctSelected ? "#86efac" : "#e2e8f0"}`, background: wrongSelected ? "#fef2f2" : correctSelected ? "#f0fdf4" : "#fff" }}>
+                                  <b>{opt.key}.</b> {opt.text}
+                                  {wrongSelected && <span style={{ color: "#dc2626", fontWeight: "900", marginLeft: "8px" }}>✕ Bài làm của bạn</span>}
+                                  {correctSelected && <span style={{ color: "#15803d", fontWeight: "800", marginLeft: "8px" }}>✓ Bài làm của bạn</span>}
+                                </div>
+                              );
+                            })}
+                            {!isCorrect && q.correctOption && <div style={{ marginTop: "4px", fontSize: "13px", color: "#15803d", fontWeight: "700" }}>Đáp án đúng: {q.correctOption}</div>}
+                            {!userAnswer && <div style={{ color: "#dc2626", fontWeight: "700", fontSize: "13px" }}>✕ Bạn chưa trả lời câu này.</div>}
+                          </div>
+                        )}
+
+                        {q.section === "TF" && q.subTfs && (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
+                            {q.subTfs.map(sub => {
+                              const selected = userAnswer?.[sub.id];
+                              const correct = selected !== undefined && selected === sub.key;
+                              const selectedText = selected === true ? "Đúng" : selected === false ? "Sai" : "Chưa trả lời";
+                              return (
+                                <div key={sub.id} style={{ padding: "9px 11px", borderRadius: "7px", border: `1px solid ${correct ? "#86efac" : "#fca5a5"}`, background: correct ? "#f0fdf4" : "#fef2f2" }}>
+                                  <div><b>{sub.id.toUpperCase()}.</b> {sub.content}</div>
+                                  <div style={{ marginTop: "5px", fontSize: "12px", fontWeight: "700", color: correct ? "#15803d" : "#dc2626" }}>
+                                    {correct ? "✓" : "✕"} Bài làm: {selectedText}
+                                    {!correct && ` — Đáp án đúng: ${sub.key ? "Đúng" : "Sai"}`}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {q.section === "SHORT" && (
+                          <div style={{ padding: "10px 12px", borderRadius: "7px", background: isCorrect ? "#f0fdf4" : "#fef2f2", border: `1px solid ${isCorrect ? "#86efac" : "#fca5a5"}` }}>
+                            <strong style={{ color: isCorrect ? "#15803d" : "#dc2626" }}>{isCorrect ? "✓" : "✕"} Bài làm: </strong>
+                            <span>{userAnswer === undefined || userAnswer === "" ? "Chưa trả lời" : String(userAnswer)}</span>
+                            {!isCorrect && <div style={{ marginTop: "5px", fontSize: "12px", color: "#15803d", fontWeight: "700" }}>Đáp án đúng: {q.shortAnswer}</div>}
+                          </div>
+                        )}
+
+                        {q.section === "ESSAY" && (
+                          <div style={{ padding: "10px 12px", borderRadius: "7px", background: "#f8fafc", border: "1px solid #cbd5e1", whiteSpace: "pre-wrap" }}>
+                            <strong>Bài làm của bạn:</strong>
+                            <div style={{ marginTop: "7px", color: "#334155" }}>{userAnswer || "Chưa trả lời"}</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
