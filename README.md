@@ -1,74 +1,67 @@
-# 🧪 KHTN SMART TEST
+# ĐẤU TRƯỜNG KHOA HỌC TỰ NHIÊN – V1.1
 
-Web app nền tảng cho hệ thống kiểm tra Khoa học tự nhiên:
+Ứng dụng Next.js + Supabase cho ngân hàng câu hỏi, ma trận tạo đề, thi online, chấm tự động, xem lại bài làm và xuất Excel.
 
-**NGÂN HÀNG CÂU HỎI → TẠO ĐỀ → THI ONLINE → CHẤM → THỐNG KÊ**
+## 1. Cấu trúc
 
-## Cấu trúc đề mặc định
+- `app/PhysicsArena.tsx`: giao diện và logic chính.
+- `app/page.tsx`: trang chính.
+- `app/layout.tsx`: metadata/layout.
+- `app/globals.css`: CSS tối thiểu.
+- `supabase_schema_v1.sql`: tạo bảng Supabase.
+- `.env.example`: mẫu biến môi trường.
 
-- Phần I: 12 câu trắc nghiệm nhiều lựa chọn.
-- Phần II: 2 câu Đúng/Sai, mỗi câu 4 ý a–d.
-- Phần III: 4 câu trả lời ngắn.
-- Phần IV: 3 câu tự luận.
+## 2. Supabase
 
-### Chấm Đúng/Sai
+1. Tạo project Supabase.
+2. Mở SQL Editor.
+3. Chạy toàn bộ `supabase_schema_v1.sql`.
+4. Lấy Project URL và anon/public key.
 
-Mỗi câu tối đa 1 điểm:
+Không đưa `service_role` key vào biến `NEXT_PUBLIC_*`.
 
-| Số ý sai | Điểm |
-|---:|---:|
-| 0 | 1,00 |
-| 1 | 0,50 |
-| 2 | 0,25 |
-| 3 | 0,10 |
-| 4 | 0,00 |
+## 3. Chạy local
 
-## Công nghệ
+Tạo `.env.local` từ `.env.example`:
 
-- Next.js + React + TypeScript
-- Supabase (Auth/Postgres/Realtime/Storage ở các phiên bản tiếp theo)
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+```
 
-## Chạy trên máy Windows
-
-1. Cài Node.js LTS.
-2. Mở Terminal/PowerShell tại thư mục dự án.
-3. Chạy:
+Sau đó:
 
 ```bash
 npm install
-copy .env.example .env.local
+npm run build
 npm run dev
 ```
 
-Mở `http://localhost:3000`.
+## 4. Deploy Vercel
 
-> Nếu PowerShell không nhận `copy`, dùng `Copy-Item .env.example .env.local`.
+- Push toàn bộ thư mục lên GitHub.
+- Import repository vào Vercel.
+- Framework: Next.js (Vercel tự nhận).
+- Thêm 2 Environment Variables:
+  - `NEXT_PUBLIC_SUPABASE_URL`
+  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- Deploy.
 
-## Kết nối Supabase
+## 5. Chức năng V1.1
 
-1. Tạo project Supabase.
-2. Vào Project Settings → API.
-3. Điền URL và Publishable Key vào `.env.local`.
-4. Mở SQL Editor của Supabase và chạy toàn bộ `supabase/schema.sql`.
-5. Tạo tài khoản giáo viên trong Authentication → Users.
-6. Sau đó tạo profile tương ứng trong bảng `profiles`.
+- Ngân hàng câu hỏi: nhập Excel/CSV/JSON, thêm câu.
+- Ma trận theo 4 mức độ NB/TH/VD/VDC.
+- Tạo đề ngẫu nhiên và đảo câu/đáp án.
+- Xuất link đề theo mã đề.
+- Học sinh làm bài trực tuyến.
+- Đồng hồ dựa trên deadline tuyệt đối, giảm lỗi trôi thời gian khi tab bị treo.
+- Tự động nộp khi hết giờ.
+- Chấm MCQ, Đúng/Sai, trả lời ngắn.
+- Hiển thị lại bài làm sau khi nộp, đánh dấu câu sai màu đỏ.
+- Lưu bài làm lên Supabase.
+- Giáo viên tải kết quả và xuất Excel.
+- Ghi nhận việc học sinh rời tab ở mức cảnh báo phía trình duyệt.
 
-**Không đưa `.env.local` lên GitHub.** `.gitignore` đã loại file này.
+## 6. Lưu ý V1
 
-## Trạng thái phiên bản
-
-### V1 hiện có
-- Landing page.
-- Dashboard giáo viên.
-- Khung ngân hàng 4 dạng câu hỏi.
-- Form thêm câu hỏi (UI nền).
-- Cấu trúc tạo đề 12–2–4–3.
-- Màn hình học sinh vào thi.
-- Supabase schema nền.
-- Hàm chấm Đúng/Sai.
-
-### V2–V5 sẽ triển khai tiếp
-- V2: CRUD ngân hàng câu hỏi + import Excel.
-- V3: Ma trận + sinh đề ngẫu nhiên + xáo đáp án + lưu mã đề.
-- V4: Thi thật + timer + autosave + chống mất mạng + tự chấm.
-- V5: Chấm tự luận + thống kê + xuất Excel/PDF.
+V1 sử dụng Supabase anon key phía trình duyệt và lưu dữ liệu đề có đáp án. Đây chưa phải kiến trúc chống gian lận tuyệt đối. V2 nên chuyển đáp án/chấm điểm sang server-side Edge Function/RPC và dùng Supabase Auth + RLS chặt chẽ.
