@@ -1,11 +1,19 @@
- "use client";
 
-import { ChangeEvent, useMemo, useState } from "react";
+"use client";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
-
+import { createClient } from "@supabase/supabase-js";
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || "";
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() || "";
+const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 type Section = "MCQ" | "TF" | "SHORT" | "ESSAY";
 type Difficulty = "NB" | "TH" | "VD" | "VDC";
-
+type SubTFItem = {
+  id: string;
+  content: string;
+  key: boolean;
+  difficulty: Difficulty;
+};
 type Question = {
   id: string;
   section: Section;
@@ -14,238 +22,754 @@ type Question = {
   topic: string;
   difficulty: Difficulty;
   content: string;
+  videoUrl?: string;
+  audioUrl?: string;
   imageUrl?: string;
   options?: { key: string; text: string }[];
   correctOption?: string;
-  tf?: boolean[];
+  subTfs?: SubTFItem[];
   shortAnswer?: string;
   tolerance?: number;
   points: number;
 };
-
 type Matrix = {
-  MCQ: { NB: number; TH: number; VD: number; VDC: number };
-  TF: { NB: number; TH: number; VD: number; VDC: number };
-  SHORT: { NB: number; TH: number; VD: number; VDC: number };
-  ESSAY: { NB: number; TH: number; VD: number; VDC: number };
+  MCQ: Record<Difficulty, number>;
+  TF: Record<Difficulty, number>;
+  SHORT: Record<Difficulty, number>;
+  ESSAY: Record<Difficulty, number>;
 };
-
 const seed: Question[] = [
-  { id:"VL001", section:"MCQ", subject:"Vật lí", grade:"8", topic:"Chuyển động", difficulty:"NB", content:"Đại lượng cho biết mức độ nhanh hay chậm của chuyển động là gì?", options:[{key:"A",text:"Khối lượng"},{key:"B",text:"Vận tốc"},{key:"C",text:"Lực"},{key:"D",text:"Áp suất"}], correctOption:"B", points:.25 },
-  { id:"VL002", section:"MCQ", subject:"Vật lí", grade:"8", topic:"Chuyển động", difficulty:"TH", content:"Một vật đi được 120 m trong 20 s. Tốc độ trung bình của vật là", options:[{key:"A",text:"4 m/s"},{key:"B",text:"5 m/s"},{key:"C",text:"6 m/s"},{key:"D",text:"8 m/s"}], correctOption:"C", points:.25 },
-  { id:"VL003", section:"TF", subject:"Vật lí", grade:"8", topic:"Lực", difficulty:"TH", content:"Xét các nhận định về lực tác dụng lên vật.", tf:[true,false,true,false], points:1 },
-  { id:"VL004", section:"SHORT", subject:"Vật lí", grade:"8", topic:"Công suất", difficulty:"VD", content:"Một máy thực hiện công 600 J trong 20 s. Công suất của máy là bao nhiêu W?", shortAnswer:"30", tolerance:.1, points:.5 },
-  { id:"VL005", section:"ESSAY", subject:"Vật lí", grade:"8", topic:"Áp suất", difficulty:"VD", content:"Giải thích vì sao giày cao gót có thể tạo áp suất lớn lên mặt sàn. Trình bày bằng kiến thức về áp suất.", points:2 },
-  { id:"VL006", section:"MCQ", subject:"Vật lí", grade:"8", topic:"Áp suất", difficulty:"VD", content:"Áp suất phụ thuộc vào những đại lượng nào?", options:[{key:"A",text:"Lực tác dụng và diện tích bị ép"},{key:"B",text:"Khối lượng và thể tích"},{key:"C",text:"Thời gian và quãng đường"},{key:"D",text:"Nhiệt độ và khối lượng"}], correctOption:"A", points:.25 },
-  { id:"VL007", section:"TF", subject:"Vật lí", grade:"8", topic:"Áp suất", difficulty:"VD", content:"Xét các phát biểu về áp suất chất lỏng.", tf:[true,true,false,true], points:1 },
-  { id:"VL008", section:"SHORT", subject:"Vật lí", grade:"8", topic:"Áp suất", difficulty:"TH", content:"Áp suất của lực 200 N tác dụng lên diện tích 0,5 m² là bao nhiêu Pa?", shortAnswer:"400", tolerance:.1, points:.5 }
+  { 
+    id: "KHTN001", 
+    section: "MCQ", 
+    subject: "Khoa học tự nhiên", 
+    grade: "7", 
+    topic: "Tốc độ chuyển động", 
+    difficulty: "NB", 
+    content: "Đại lượng cho biết mức độ nhanh hay chậm của chuyển động là:", 
+    options: [{key:"A",text:"Khối lượng"},{key:"B",text:"Vận tốc"},{key:"C",text:"Lực"},{key:"D",text:"Áp suất"}], 
+    correctOption: "B", 
+    points: 0.25 
+  },
+  { 
+    id: "KHTN002", 
+    section: "TF", 
+    subject: "Khoa học tự nhiên", 
+    grade: "7", 
+    topic: "Ánh sáng", 
+    difficulty: "TH", 
+    content: "Các nhận định về hiện tượng phản xạ ánh sáng:", 
+    subTfs: [
+      { id: "a", content: "Tia phản xạ nằm trong mặt phẳng chứa tia tới và pháp tuyến.", key: true, difficulty: "NB" },
+      { id: "b", content: "Góc phản xạ luôn lớn hơn góc tới.", key: false, difficulty: "TH" },
+      { id: "c", content: "Góc phản xạ bằng góc tới.", key: true, difficulty: "NB" },
+      { id: "d", content: "Khi thay đổi góc tới thì góc phản xạ không đổi.", key: false, difficulty: "VD" }
+    ], 
+    points: 1.0 
+  },
+  { 
+    id: "KHTN003", 
+    section: "SHORT", 
+    subject: "Khoa học tự nhiên", 
+    grade: "7", 
+    topic: "Âm thanh", 
+    difficulty: "VD", 
+    content: "Một nguồn âm dao động thực hiện 600 dao động trong 20 giây. Tần số dao động của nguồn âm là (Hz):", 
+    shortAnswer: "30", 
+    tolerance: 0.1, 
+    points: 0.5 
+  },
+  { 
+    id: "KHTN004", 
+    section: "ESSAY", 
+    subject: "Khoa học tự nhiên", 
+    grade: "7", 
+    topic: "Trao đổi chất", 
+    difficulty: "VD", 
+    content: "Giải thích vai trò của quá trình quang hợp đối với sự sống trên Trái Đất?", 
+    points: 2.0 
+  }
 ];
-
 const defaultMatrix: Matrix = {
-  MCQ: { NB:1, TH:1, VD:1, VDC:0 },
-  TF: { NB:0, TH:1, VD:1, VDC:0 },
-  SHORT: { NB:0, TH:1, VD:1, VDC:0 },
-  ESSAY: { NB:0, TH:0, VD:1, VDC:0 }
+  MCQ: { NB: 1, TH: 1, VD: 0, VDC: 0 },
+  TF: { NB: 0, TH: 1, VD: 0, VDC: 0 },
+  SHORT: { NB: 0, TH: 1, VD: 0, VDC: 0 },
+  ESSAY: { NB: 0, TH: 0, VD: 1, VDC: 0 }
 };
-
-const sectionLabel: Record<Section,string> = { MCQ:"I. Nhiều lựa chọn", TF:"II. Đúng / Sai", SHORT:"III. Trả lời ngắn", ESSAY:"IV. Tự luận" };
-const diffLabel: Record<Difficulty,string> = { NB:"Nhận biết", TH:"Thông hiểu", VD:"Vận dụng", VDC:"Vận dụng cao" };
-
-function shuffle<T>(arr:T[]) {
-  const a=[...arr];
-  for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+const sectionLabel: Record<Section, string> = { 
+  MCQ: "Phần I: Trắc nghiệm nhiều lựa chọn", 
+  TF: "Phần II: Trắc nghiệm đúng / sai", 
+  SHORT: "Phần III: Trắc nghiệm trả lời ngắn", 
+  ESSAY: "Phần IV: Tự luận" 
+};
+const diffLabel: Record<Difficulty, string> = { NB: "Nhận biết", TH: "Thông hiểu", VD: "Vận dụng", VDC: "Vận dụng cao" };
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
   return a;
 }
-
-function scoreTF(answer:boolean[]|undefined, key:boolean[]|undefined, point:number) {
-  if(!answer || !key) return 0;
-  const wrong=answer.reduce((n,v,i)=>n+(v!==key[i]?1:0),0);
-  const factor = [1,.5,.25,.1,0][wrong];
-  return point*factor;
+function shuffleExamSections(questionList: Question[]): Question[] {
+  const mcq = questionList.filter(q => q.section === "MCQ");
+  const tf = questionList.filter(q => q.section === "TF");
+  const short = questionList.filter(q => q.section === "SHORT");
+  const essay = questionList.filter(q => q.section === "ESSAY");
+  const shuffleArray = <T,>(arr: T[]): T[] => {
+    const shuffled = [...arr];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  };
+  return [
+    ...shuffleArray(mcq).map(q => q.options ? { ...q, options: shuffleArray(q.options) } : q),
+    ...shuffleArray(tf),
+    ...shuffleArray(short),
+    ...shuffleArray(essay)
+  ];
 }
-
-function parseRow(r:any): Question {
-  const section = String(r.section||"MCQ").toUpperCase() as Section;
-  const options = ["A","B","C","D"].map(k=>({key:k,text:String(r["option"+k]??"")})).filter(x=>x.text);
-  const tf = ["tfA","tfB","tfC","tfD"].map(k=>String(r[k]).toLowerCase()==="true" || r[k]===true);
+function scoreTF(userAns: Record<string, boolean> | undefined, subTfs: SubTFItem[] | undefined, totalPoint: number): number {
+  if (!subTfs || !userAns) return 0;
+  let wrongCount = 0;
+  subTfs.forEach(sub => {
+    const uVal = userAns[sub.id];
+    if (uVal === undefined || uVal !== sub.key) {
+      wrongCount++;
+    }
+  });
+  let deduction = 0;
+  // Quy tắc chấm đúng/sai: sai 1 ý trừ 0,5; sai 2 ý trừ 0,75;
+  // sai 3 ý trừ 0,9; sai 4 ý được 0 điểm.
+  if (wrongCount === 1) deduction = 0.50 * totalPoint;
+  else if (wrongCount === 2) deduction = 0.75 * totalPoint;
+  else if (wrongCount === 3) deduction = 0.90 * totalPoint;
+  else if (wrongCount >= 4) deduction = totalPoint;
+  return Math.max(0, totalPoint - deduction);
+}
+function parseRow(r: Record<string, any>): Question {
+  const section = String(r.section || "MCQ").toUpperCase() as Section;
+  const options = ["A", "B", "C", "D"].map(k => ({ key: k, text: String(r[`option${k}`] ?? r[`option_${k.toLowerCase()}`] ?? "") })).filter(x => x.text);
+  
+  const subTfs: SubTFItem[] = ["a", "b", "c", "d"].map((id) => ({
+    id,
+    content: String(r[`tf_content_${id}`] || `Nhận định ${id.toUpperCase()}`),
+    key: String(r[`tf_key_${id}`]).toLowerCase() === "true" || r[`tf_key_${id}`] === 1,
+    difficulty: (String(r[`tf_diff_${id}`] || "TH").toUpperCase() as Difficulty)
+  }));
   return {
-    id:String(r.id||crypto.randomUUID()), section, subject:String(r.subject||"Vật lí"), grade:String(r.grade||"8"),
-    topic:String(r.topic||"Chưa phân loại"), difficulty:(String(r.difficulty||"TH").toUpperCase() as Difficulty),
-    content:String(r.content||""), imageUrl:String(r.imageUrl||"")||undefined,
-    options: options.length?options:undefined, correctOption:String(r.correctOption||"")||undefined,
-    tf: section==="TF"?tf:undefined, shortAnswer:String(r.shortAnswer??"")||undefined,
-    tolerance:Number(r.tolerance||0), points:Number(r.points||1)
+    id: String(r.id || crypto.randomUUID()),
+    section,
+    subject: String(r.subject || "Khoa học tự nhiên"),
+    grade: String(r.grade || "7"),
+    topic: String(r.topic || "Chủ đề mới"),
+    difficulty: (String(r.difficulty || "TH").toUpperCase() as Difficulty),
+    content: String(r.content || ""),
+    videoUrl: String(r.videoUrl || "") || undefined,
+    audioUrl: String(r.audioUrl || "") || undefined,
+    imageUrl: String(r.imageUrl || "") || undefined,
+    options: options.length ? options : undefined,
+    correctOption: String(r.correctOption || ""),
+    subTfs: section === "TF" ? subTfs : undefined,
+    shortAnswer: String(r.shortAnswer ?? "") || undefined,
+    tolerance: Number(r.tolerance || 0),
+    points: Number(r.points || 1)
   };
 }
-
 export default function PhysicsArena() {
-  const [mode,setMode]=useState<"teacher"|"student">("teacher");
-  const [tab,setTab]=useState<"bank"|"matrix"|"exam"|"grading"|"stats">("bank");
-  const [questions,setQuestions]=useState<Question[]>(seed);
-  const [matrix,setMatrix]=useState<Matrix>(defaultMatrix);
-  const [exam,setExam]=useState<Question[]>([]);
-  const [answers,setAnswers]=useState<Record<string,any>>({});
-  const [current,setCurrent]=useState(0);
-  const [submitted,setSubmitted]=useState(false);
-  const [studentName,setStudentName]=useState("");
-  const [minutes,setMinutes]=useState(45);
-  const [seconds,setSeconds]=useState(45*60);
-  const [imagePreview,setImagePreview]=useState<string>("");
-  const [essayScores,setEssayScores]=useState<Record<string,number>>({});
-  const [notice,setNotice]=useState("");
-
-  const totalPoints = useMemo(()=>exam.reduce((s,q)=>s+q.points,0),[exam]);
-  const autoScore = useMemo(()=>exam.reduce((s,q)=>{
-    const a=answers[q.id];
-    if(q.section==="MCQ") return s+(a===q.correctOption?q.points:0);
-    if(q.section==="TF") return s+scoreTF(a,q.tf,q.points);
-    if(q.section==="SHORT"){
-      const n=Number(a); const key=Number(q.shortAnswer);
-      return s+(Number.isFinite(n)&&Math.abs(n-key)<=Number(q.tolerance||0)?q.points:0);
+  const [mode, setMode] = useState<"teacher" | "student">("teacher");
+  const [tab, setTab] = useState<"bank" | "matrix" | "exam" | "grading" | "stats">("bank");
+  const [questions, setQuestions] = useState<Question[]>(seed);
+  const [matrix, setMatrix] = useState<Matrix>(defaultMatrix);
+  const [examMinutes, setExamMinutes] = useState<number>(45); 
+  const [exam, setExam] = useState<Question[]>([]);
+  const [examCodeId, setExamCodeId] = useState<string>("");
+  const [answers, setAnswers] = useState<Record<string, any>>({});
+  const answersRef = useRef<Record<string, any>>({});
+  const examRef = useRef<Question[]>([]);
+  const [submitted, setSubmitted] = useState(false);
+  
+  const [studentName, setStudentName] = useState("");
+  const [studentClass, setStudentClass] = useState("");
+  const [studentSchool, setStudentSchool] = useState("");
+  const [seconds, setSeconds] = useState(45 * 60);
+  const [essayScores] = useState<Record<string, number>>({});
+  const [notice, setNotice] = useState("");
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
+  useEffect(() => {
+    examRef.current = exam;
+  }, [exam]);
+  useEffect(() => {
+    if (mode === "student" && exam.length > 0 && !submitted) {
+      const timer = setInterval(() => {
+        setSeconds(prev => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            submitExam();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
     }
-    return s;
-  },0),[exam,answers]);
-  const finalScore = autoScore + Object.values(essayScores).reduce((a,b)=>a+b,0);
-
+  }, [mode, exam, submitted]);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const examId = params.get("exam");
+    if (examId) {
+      setMode("student");
+      setExamCodeId(examId);
+      async function fetchExamFromCloud() {
+        const { data } = await supabase.from('exams').select('questions_data, duration').eq('id', examId).single();
+        if (data && data.questions_data) {
+          setExam(data.questions_data as Question[]);
+          if (data.duration) {
+            setExamMinutes(data.duration);
+            setSeconds(data.duration * 60);
+          }
+          setNotice(`Đã tải thành công đề thi (${examId}) cho học sinh.`);
+        } else {
+          alert("Không tìm thấy mã đề thi này hoặc link không hợp lệ!");
+        }
+      }
+      fetchExamFromCloud();
+    }
+  }, []);
+  const autoScore = useMemo(() => {
+    return exam.reduce((s, q) => {
+      const a = answers[q.id];
+      if (q.section === "MCQ") return s + (a === q.correctOption ? q.points : 0);
+      if (q.section === "TF") return s + scoreTF(a, q.subTfs, q.points);
+      if (q.section === "SHORT") {
+        const n = Number(a); 
+        const key = Number(q.shortAnswer);
+        return s + (Number.isFinite(n) && Math.abs(n - key) <= Number(q.tolerance || 0) ? q.points : 0);
+      }
+      return s;
+    }, 0);
+  }, [exam, answers]);
+  
+  const essayTotalScore = Object.values(essayScores).reduce((a, b) => a + b, 0);
+  const finalScore = autoScore + essayTotalScore;
   function generateExam() {
-    const selected:Question[]=[];
-    (Object.keys(matrix) as Section[]).forEach(sec=>{
-      (Object.keys(matrix[sec]) as Difficulty[]).forEach(d=>{
-        const n=matrix[sec][d];
-        const pool=questions.filter(q=>q.section===sec && q.difficulty===d);
-        selected.push(...shuffle(pool).slice(0,n));
+    const selected: Question[] = [];
+    (Object.keys(matrix) as Section[]).forEach(sec => {
+      (Object.keys(matrix[sec]) as Difficulty[]).forEach(d => {
+        const n = matrix[sec][d];
+        const pool = questions.filter(q => q.section === sec && q.difficulty === d);
+        selected.push(...shuffle(pool).slice(0, n));
       });
     });
-    const randomized=shuffle(selected).map(q=>q.section==="MCQ" && q.options ? {...q, options:shuffle(q.options)} : q);
+    const randomized = shuffleExamSections(selected);
+    if (randomized.length === 0) {
+      setNotice("Ma trận chưa chọn câu hỏi hoặc ngân hàng chưa có câu phù hợp.");
+      return;
+    }
+
+    const requestedCount = (Object.keys(matrix) as Section[]).reduce(
+      (sum, sec) => sum + (Object.keys(matrix[sec]) as Difficulty[]).reduce(
+        (s, d) => s + matrix[sec][d], 0
+      ), 0
+    );
+
     setExam(randomized);
     setAnswers({});
-    setEssayScores({});
-    setCurrent(0);
     setSubmitted(false);
-    setSeconds(minutes*60);
+    setSeconds(examMinutes * 60);
     setTab("exam");
-    setNotice(`Đã tạo đề ${randomized.length} câu từ ngân hàng.`);
+    setNotice(
+      randomized.length < requestedCount
+        ? `Đã tạo ${randomized.length}/${requestedCount} câu. Ngân hàng chưa đủ câu theo ma trận.`
+        : `Đã tạo đề ${randomized.length} câu thành công với thời gian ${examMinutes} phút.`
+    );
   }
-
-  function updateMatrix(sec:Section,d:Difficulty,value:number) {
-    setMatrix(m=>({...m,[sec]:{...m[sec],[d]:Math.max(0,Math.floor(value||0))}}));
+  async function handlePublishAndGetLink() {
+    if (exam.length === 0) {
+      alert("Chưa có đề thi nào được tạo! Thầy hãy bấm 'Tạo đề thi' trước.");
+      return;
+    }
+    const examCode = "KHTN_" + Math.random().toString(36).substring(2, 8).toUpperCase();
+    setExamCodeId(examCode);
+    const { error } = await supabase.from('exams').insert([{ 
+      id: examCode, 
+      title: "Kiểm tra Khoa học tự nhiên", 
+      duration: examMinutes,
+      questions_data: exam 
+    }]);
+    if (error) {
+      alert("Lỗi khi lưu đề lên hệ thống: " + error.message);
+    } else {
+      const shareLink = `${window.location.origin}/?exam=${examCode}`;
+      prompt("Đã xuất link thành công! Thầy hãy copy đường link sau gửi cho học sinh:", shareLink);
+    }
   }
-
-  function importFile(e:ChangeEvent<HTMLInputElement>) {
-    const file=e.target.files?.[0]; if(!file) return;
-    const reader=new FileReader();
-    reader.onload=(ev)=>{
-      try{
-        const data=ev.target?.result;
-        let rows:any[]=[];
-        if(file.name.endsWith(".json")) rows=JSON.parse(String(data));
+  function updateMatrix(sec: Section, d: Difficulty, value: number) {
+    setMatrix(m => ({ ...m, [sec]: { ...m[sec], [d]: Math.max(0, Math.floor(value || 0)) } }));
+  }
+  function importFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = ev.target?.result;
+        let rows: Record<string, any>[] = [];
+        if (file.name.endsWith(".json")) rows = JSON.parse(String(data));
         else {
-          const wb=XLSX.read(data,{type:"array"});
-          rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+          const wb = XLSX.read(data, { type: "array" });
+          rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
         }
-        const parsed=rows.map(parseRow).filter(q=>q.content);
+        const parsed = rows.map(parseRow).filter(q => q.content);
         setQuestions(parsed);
         setNotice(`Đã cập nhật ${parsed.length} câu hỏi từ ${file.name}.`);
-      }catch(err){ setNotice("Không đọc được file. Hãy kiểm tra định dạng mẫu."); }
+      } catch { 
+        setNotice("Không đọc được file. Hãy kiểm tra định dạng mẫu."); 
+      }
     };
-    if(file.name.endsWith(".json")) reader.readAsText(file); else reader.readAsArrayBuffer(file);
+    if (file.name.endsWith(".json")) reader.readAsText(file); else reader.readAsArrayBuffer(file);
   }
+  async function submitExam() {
+    if (submitted) return;
 
-  function uploadImage(e:ChangeEvent<HTMLInputElement>) {
-    const file=e.target.files?.[0]; if(!file)return;
-    const url=URL.createObjectURL(file);
-    setImagePreview(url);
-    setNotice("Đã nạp ảnh xem trước. Khi kết nối Storage Supabase, ảnh có thể được lưu dùng chung.");
-  }
+    const currentAnswers = answersRef.current;
+    const currentExam = examRef.current;
+    const score = currentExam.reduce((s, q) => {
+      const a = currentAnswers[q.id];
+      if (q.section === "MCQ") return s + (a === q.correctOption ? q.points : 0);
+      if (q.section === "TF") return s + scoreTF(a, q.subTfs, q.points);
+      if (q.section === "SHORT") {
+        const n = Number(a);
+        const key = Number(q.shortAnswer);
+        return s + (Number.isFinite(n) && Number.isFinite(key) &&
+          Math.abs(n - key) <= Number(q.tolerance || 0) ? q.points : 0);
+      }
+      return s;
+    }, 0);
 
-  function submitExam() {
     setSubmitted(true);
     setTab("grading");
-    setNotice("Bài đã được nộp. Các phần tự động đã được chấm; phần tự luận chờ giáo viên chấm.");
+
+    if (!supabase) {
+      setNotice("Bài đã được chấm trên máy, nhưng chưa lưu Cloud vì Supabase chưa được cấu hình.");
+      return;
+    }
+
+    const { error } = await supabase.from("student_submissions").insert([{
+      exam_id: examCodeId || "LOCAL_TEST",
+      student_name: studentName.trim(),
+      student_class: studentClass.trim(),
+      student_school: studentSchool.trim(),
+      auto_score: score,
+      answers_data: currentAnswers,
+      submitted_at: new Date().toISOString()
+    }]);
+
+    if (error) {
+      console.error("Không thể lưu kết quả lên Cloud:", error.message);
+      setNotice("Bài đã được chấm nhưng chưa lưu được lên Cloud: " + error.message);
+      return;
+    }
+
+    setNotice("Bài đã được nộp, chấm tự động và lưu lên hệ thống thành công!");
   }
-
-  return <main className="app-shell">
-    <header className="topbar">
-      <div className="brand"><span className="atom">⚛</span><div><b>PHYSICS TEST ARENA</b><small>Hệ thống kiểm tra online Vật lí</small></div></div>
-      <div className="top-actions"><button className={mode==="teacher"?"active":""} onClick={()=>setMode("teacher")}>👨‍🏫 Giáo viên</button><button className={mode==="student"?"active":""} onClick={()=>setMode("student")}>👨‍🎓 Học sinh</button></div>
-    </header>
-
-    {notice && <div className="notice">{notice}<button onClick={()=>setNotice("")}>×</button></div>}
-
-    {mode==="teacher" ? <section className="workspace">
-      <aside className="sidebar">
-        <div className="side-title">BẢNG ĐIỀU KHIỂN</div>
-        {[
-          ["bank","📚","Ngân hàng câu hỏi"],
-          ["matrix","🧩","Ma trận & tạo đề"],
-          ["exam","📝","Xem đề"],
-          ["grading","✍️","Chấm bài"],
-          ["stats","📊","Thống kê"]
-        ].map(([id,icon,label])=><button key={id} className={tab===id?"nav active":"nav"} onClick={()=>setTab(id as any)}><span>{icon}</span>{label}</button>)}
-        <div className="sidebar-card"><b>4 PHẦN</b><small>Trắc nghiệm · Đúng/Sai · Trả lời ngắn · Tự luận</small></div>
-      </aside>
-
-      <div className="content">
-        {tab==="bank" && <div className="panel">
-          <div className="panel-head"><div><h1>📚 Ngân hàng câu hỏi</h1><p>Quản lý câu hỏi theo lớp, chủ đề và mức độ.</p></div>
-          <label className="primary-btn">⬆ Cập nhật ngân hàng
-            <input hidden type="file" accept=".xlsx,.csv,.json" onChange={importFile}/>
-          </label></div>
-          <div className="metrics"><Metric n={questions.length} t="Tổng câu"/><Metric n={questions.filter(q=>q.section==="MCQ").length} t="Nhiều lựa chọn"/><Metric n={questions.filter(q=>q.section==="TF").length} t="Đúng/Sai"/><Metric n={questions.filter(q=>q.section==="SHORT").length} t="Trả lời ngắn"/></div>
-          <div className="toolbar"><span>Định dạng hỗ trợ: XLSX · CSV · JSON</span><a href="/question-bank-template.csv" download>Tải file mẫu</a></div>
-          <div className="table-wrap"><table><thead><tr><th>Mã</th><th>Phần</th><th>Chủ đề</th><th>Mức độ</th><th>Nội dung</th><th>Điểm</th></tr></thead><tbody>
-            {questions.map(q=><tr key={q.id}><td><b>{q.id}</b></td><td><Badge>{q.section}</Badge></td><td>{q.topic}</td><td>{diffLabel[q.difficulty]}</td><td>{q.content}</td><td>{q.points}</td></tr>)}
-          </tbody></table></div>
-          <div className="upload-box"><div><b>🖼 Hình ảnh câu hỏi</b><p>Nạp ảnh để xem trước trong trình soạn đề.</p></div><label className="secondary-btn">Chọn ảnh<input hidden type="file" accept="image/*" onChange={uploadImage}/></label>{imagePreview&&<img src={imagePreview} alt="preview"/>}</div>
-        </div>}
-
-        {tab==="matrix" && <div className="panel">
-          <div className="panel-head"><div><h1>🧩 Ma trận & tạo đề</h1><p>Thay đổi số lượng câu theo từng phần và mức độ.</p></div><button className="primary-btn" onClick={generateExam}>🎲 Tạo đề ngẫu nhiên</button></div>
-          <div className="matrix-table"><div className="matrix-row header"><span>Phần</span><span>Nhận biết</span><span>Thông hiểu</span><span>Vận dụng</span><span>Vận dụng cao</span></div>
-          {(Object.keys(matrix) as Section[]).map(sec=><div className="matrix-row" key={sec}><strong>{sectionLabel[sec]}</strong>{(["NB","TH","VD","VDC"] as Difficulty[]).map(d=><input key={d} type="number" min="0" value={matrix[sec][d]} onChange={e=>updateMatrix(sec,d,Number(e.target.value))}/>)}</div>)}</div>
-          <div className="rule-card"><h3>⚡ Quy tắc chấm Đúng/Sai</h3><div className="score-rules"><span>0 sai → <b>100%</b></span><span>1 sai → <b>50%</b></span><span>2 sai → <b>25%</b></span><span>3 sai → <b>10%</b></span><span>4 sai → <b>0%</b></span></div></div>
-          <div className="settings-grid"><label>Thời gian (phút)<input type="number" min="1" value={minutes} onChange={e=>setMinutes(Number(e.target.value))}/></label><label>Lớp<select defaultValue="8"><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option></select></label><label>Tên bài kiểm tra<input defaultValue="Kiểm tra Vật lí"/></label></div>
-        </div>}
-
-        {tab==="exam" && <div className="panel">
-          <div className="panel-head"><div><h1>📝 Đề hiện tại</h1><p>{exam.length} câu · xáo câu và xáo đáp án.</p></div><button className="secondary-btn" onClick={generateExam}>🔄 Tạo lại</button></div>
-          {exam.length===0?<Empty text="Chưa có đề. Vào Ma trận & tạo đề để sinh đề."/>:<div className="question-list">{exam.map((q,i)=><div className="teacher-q" key={q.id}><div className="q-num">Câu {i+1}</div><div><Badge>{q.section}</Badge> <Badge>{diffLabel[q.difficulty]}</Badge><p>{q.content}</p>{q.imageUrl&&<img src={q.imageUrl} alt="question"/>}</div></div>)}</div>}
-        </div>}
-
-        {tab==="grading" && <div className="panel"><div className="panel-head"><div><h1>✍️ Chấm bài</h1><p>Điểm tự động + chấm tự luận thủ công.</p></div></div>
-          {!exam.length?<Empty text="Chưa có bài thi."/>:<><div className="score-hero"><span>Điểm tự động <b>{autoScore.toFixed(2)}</b></span><span>Điểm tự luận <b>{Object.values(essayScores).reduce((a,b)=>a+b,0).toFixed(2)}</b></span><span>Tổng <b>{finalScore.toFixed(2)}</b></span></div>
-          {exam.filter(q=>q.section==="ESSAY").map(q=><div className="essay-card" key={q.id}><h3>{q.id} · Tự luận · {q.points} điểm</h3><p>{q.content}</p><div className="student-answer">{answers[q.id]||"Chưa có bài làm."}</div><label>Điểm giáo viên<input type="number" min="0" max={q.points} step=".1" value={essayScores[q.id]??0} onChange={e=>setEssayScores(s=>({...s,[q.id]:Number(e.target.value)}))}/></label></div>)}</>}
-        </div>}
-
-        {tab==="stats" && <div className="panel"><div className="panel-head"><div><h1>📊 Thống kê</h1><p>Phân tích nhanh kết quả bài kiểm tra.</p></div></div>
-          <div className="metrics"><Metric n={exam.length} t="Số câu"/><Metric n={autoScore.toFixed(2)} t="Điểm tự động"/><Metric n={finalScore.toFixed(2)} t="Điểm hiện tại"/><Metric n={submitted?"Đã nộp":"Chưa nộp"} t="Trạng thái"/></div>
-          <div className="stat-card"><h3>Phân tích theo phần</h3>{(["MCQ","TF","SHORT","ESSAY"] as Section[]).map(s=><div className="bar-row" key={s}><span>{sectionLabel[s]}</span><div><i style={{width:`${exam.filter(q=>q.section===s).length?Math.min(100,(exam.filter(q=>q.section===s).length/exam.length)*100):0}%`}}/></div></div>)}</div>
-        </div>}
-      </div>
-    </section> : <StudentView exam={exam} answers={answers} setAnswers={setAnswers} current={current} setCurrent={setCurrent} seconds={seconds} setSeconds={setSeconds} studentName={studentName} setStudentName={setStudentName} submitExam={submitExam} submitted={submitted} />}
-
-    <footer>⚡ Physics Test Arena · Sẵn sàng triển khai GitHub → Vercel → Supabase</footer>
-  </main>;
+  return (
+    <main className="app-shell" style={{ 
+      fontFamily: "Inter, system-ui, Arial, sans-serif", 
+      background: "linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)", 
+      minHeight: "100vh", 
+      paddingBottom: "40px",
+      color: "#0f172a"
+    }}>
+      <header className="topbar" style={{ 
+        display: "flex", justifyContent: "space-between", alignItems: "center", 
+        padding: "16px 28px", background: "#ffffff", 
+        borderBottom: "3px solid #0d9488", 
+        boxShadow: "0 10px 25px -5px rgba(13, 148, 136, 0.15)" 
+      }}>
+        <div className="brand" style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+          <span className="atom" style={{ fontSize: "32px", background: "#ccfbf1", padding: "8px 12px", borderRadius: "14px", border: "2px solid #2dd4bf" }}>🔬</span>
+          <div>
+            <h1 style={{ 
+              fontSize: "22px", margin: 0, fontWeight: "900", color: "#0f766e",
+              textShadow: "2px 2px 0px #99f6e4, 4px 4px 0px rgba(13,148,136,0.2)",
+              letterSpacing: "0.5px"
+            }}>
+              ĐẤU TRƯỜNG KHOA HỌC TỰ NHIÊN
+            </h1>
+            <div style={{ fontSize: "12px", color: "#047857", fontWeight: "700", marginTop: "2px" }}>
+              Hệ thống ôn tập & kiểm tra trực tuyến chuẩn cấp 2
+            </div>
+          </div>
+        </div>
+        <div className="top-actions" style={{ display: "flex", gap: "10px" }}>
+          {mode === "teacher" ? (
+            <button onClick={() => setMode("student")} style={{ padding: "8px 14px", background: "#f0fdf4", border: "1px solid #5eead4", borderRadius: "8px", cursor: "pointer", fontWeight: "700", color: "#0f766e" }}>🔓 Thoát quyền GV</button>
+          ) : (
+            <button onClick={() => {
+              const pass = prompt("Nhập mật khẩu giáo viên:");
+              if (pass === "123456") setMode("teacher");
+              else if (pass !== null) alert("Sai mật khẩu!");
+            }} style={{ padding: "8px 14px", background: "#f0fdf4", border: "1px solid #5eead4", borderRadius: "8px", cursor: "pointer", fontWeight: "700", color: "#0f766e" }}>🔒 Giáo viên</button>
+          )}
+          <button onClick={() => setMode("student")} style={{ padding: "8px 14px", background: mode === "student" ? "#0d9488" : "#f0fdf4", color: mode === "student" ? "#fff" : "#0f766e", border: "1px solid #5eead4", borderRadius: "8px", cursor: "pointer", fontWeight: "700" }}>👨‍🎓 Học sinh</button>
+        </div>
+      </header>
+      {notice && <div className="notice" style={{ background: "#f0fdf4", border: "1px solid #5eead4", padding: "12px 24px", margin: "20px 28px", borderRadius: "10px", color: "#115e59", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 2px 4px rgba(0,0,0,0.02)" }}><span>{notice}</span><button onClick={() => setNotice("")} style={{ background: "none", border: "none", cursor: "pointer", fontWeight: "bold", fontSize: "16px", color: "#0f766e" }}>×</button></div>}
+      {mode === "teacher" ? (
+        <section className="workspace" style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: "24px", padding: "0 28px", marginTop: "24px" }}>
+          <aside className="sidebar" style={{ background: "#ffffff", padding: "18px", borderRadius: "14px", border: "1px solid #cbd5e1", height: "fit-content", boxShadow: "0 4px 12px -2px rgba(0, 0, 0, 0.05)" }}>
+            <div className="side-title" style={{ fontSize: "11px", fontWeight: "700", color: "#0d9488", marginBottom: "12px", letterSpacing: "1px" }}>BẢNG ĐIỀU KHIỂN KHTN</div>
+            {[
+              ["bank", "📚", "Ngân hàng câu hỏi"],
+              ["matrix", "🧩", "Ma trận & tạo đề"],
+              ["exam", "📝", "Xem & Sửa đề"],
+              ["grading", "✍️", "Chấm bài tự luận"],
+              ["stats", "📊", "Thống kê phổ điểm"]
+            ].map(([id, icon, label]) => (
+              <button key={id} onClick={() => setTab(id as any)} style={{ width: "100%", textAlign: "left", padding: "12px 14px", background: tab === id ? "#ccfbf1" : "transparent", color: tab === id ? "#115e59" : "#334155", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: tab === id ? "700" : "500", display: "flex", gap: "10px", marginBottom: "6px", transition: "all 0.2s" }}>
+                <span>{icon}</span>{label}
+              </button>
+            ))}
+          </aside>
+          <div className="content" style={{ background: "#ffffff", padding: "24px", borderRadius: "14px", border: "1px solid #cbd5e1", boxShadow: "0 4px 12px -2px rgba(0, 0, 0, 0.05)" }}>
+            {tab === "bank" && (
+              <div>
+                <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+                  <div><h2 style={{ fontSize: "20px", margin: 0, color: "#0f766e" }}>Ngân hàng câu hỏi KHTN</h2><p style={{ color: "#64748b", margin: 0, fontSize: "13px" }}>Quản lý câu hỏi, tích hợp đầy đủ file ảnh, video và bản ghi âm.</p></div>
+                  <div style={{ display: "flex", gap: "10px" }}>
+                    <label style={{ background: "#0d9488", color: "#fff", padding: "10px 16px", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: "600", display: "inline-flex", alignItems: "center", gap: "6px" }}>📥 Nhập file Excel/JSON
+                      <input hidden type="file" accept=".xlsx,.csv,.json" onChange={importFile} />
+                    </label>
+                    <button style={{ background: "#0284c7", color: "#fff", border: "none", padding: "10px 16px", borderRadius: "8px", fontWeight: "600", cursor: "pointer", fontSize: "13px" }} onClick={() => {
+                      const newQ: Question = {
+                        id: "KHTN_" + Date.now(),
+                        section: "MCQ",
+                        subject: "Khoa học tự nhiên",
+                        grade: "7",
+                        topic: "Chủ đề mới",
+                        difficulty: "TH",
+                        content: "Nội dung câu hỏi mới...",
+                        options: [{ key: "A", text: "Đáp án A" }, { key: "B", text: "Đáp án B" }, { key: "C", text: "Đáp án C" }, { key: "D", text: "Đáp án D" }],
+                        correctOption: "A",
+                        points: 0.25
+                      };
+                      setQuestions(prev => [newQ, ...prev]);
+                    }}>➕ Thêm câu mới</button>
+                  </div>
+                </div>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                    <thead>
+                      <tr style={{ background: "#f8fafc", textAlign: "left", color: "#0f766e" }}>
+                        <th style={{ padding: "10px", border: "1px solid #cbd5e1" }}>ID</th>
+                        <th style={{ padding: "10px", border: "1px solid #cbd5e1" }}>Phần</th>
+                        <th style={{ padding: "10px", border: "1px solid #cbd5e1" }}>Nội dung</th>
+                        <th style={{ padding: "10px", border: "1px solid #cbd5e1" }}>Media</th>
+                        <th style={{ padding: "10px", border: "1px solid #cbd5e1" }}>Xóa</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {questions.map((q, index) => (
+                        <tr key={q.id || index}>
+                          <td style={{ padding: "10px", border: "1px solid #cbd5e1" }}><b>{q.id}</b></td>
+                          <td style={{ padding: "10px", border: "1px solid #cbd5e1" }}>{sectionLabel[q.section]}</td>
+                          <td style={{ padding: "10px", border: "1px solid #cbd5e1" }}>{q.content}</td>
+                          <td style={{ padding: "10px", border: "1px solid #cbd5e1" }}>
+                            {q.imageUrl && <span style={{ color: "#0284c7", marginRight: "6px" }}>🖼️ Ảnh</span>}
+                            {q.videoUrl && <span style={{ color: "#7c3aed", marginRight: "6px" }}>🎥 Video</span>}
+                            {q.audioUrl && <span style={{ color: "#059669" }}>🔊 Audio</span>}
+                            {!q.imageUrl && !q.videoUrl && !q.audioUrl && <span style={{ color: "#94a3b8" }}>Không có</span>}
+                          </td>
+                          <td style={{ padding: "10px", border: "1px solid #cbd5e1" }}>
+                            <button style={{ background: "#fee2e2", color: "#991b1b", border: "none", padding: "6px 10px", borderRadius: "6px", cursor: "pointer" }} onClick={() => { if (confirm("Xóa câu này?")) setQuestions(prev => prev.filter((_, i) => i !== index)); }}>🗑️</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {tab === "matrix" && (
+              <div>
+                <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
+                  <div><h2 style={{ fontSize: "20px", margin: 0, color: "#0f766e" }}>Ma trận & Tạo đề</h2><p style={{ color: "#64748b", margin: 0, fontSize: "13px" }}>Cấu hình số lượng câu hỏi và chọn thời gian bài thi.</p></div>
+                  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "#f0fdf4", padding: "6px 12px", borderRadius: "8px", border: "1px solid #5eead4" }}>
+                      <span style={{ fontSize: "13px", fontWeight: "700", color: "#0f766e" }}>⏱️ Thời gian:</span>
+                      <select value={examMinutes} onChange={e => setExamMinutes(Number(e.target.value))} style={{ padding: "4px 8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontWeight: "600" }}>
+                        <option value={15}>15 phút</option>
+                        <option value={30}>30 phút</option>
+                        <option value={45}>45 phút</option>
+                        <option value={60}>60 phút</option>
+                        <option value={90}>90 phút</option>
+                      </select>
+                    </div>
+                    <button onClick={generateExam} style={{ background: "#0d9488", color: "#fff", border: "none", padding: "10px 16px", borderRadius: "8px", fontWeight: "600", cursor: "pointer" }}>Tạo đề thi</button>
+                    <button onClick={handlePublishAndGetLink} style={{ background: "#0284c7", color: "#fff", border: "none", padding: "10px 16px", borderRadius: "8px", fontWeight: "600", cursor: "pointer" }}>🔗 Xuất link gửi học sinh</button>
+                  </div>
+                </div>
+                {(Object.keys(matrix) as Section[]).map(sec => (
+                  <div key={sec} style={{ display: "grid", gridTemplateColumns: "220px repeat(4, 1fr)", gap: "12px", alignItems: "center", marginBottom: "12px", background: "#f8fafc", padding: "12px", borderRadius: "8px", border: "1px solid #cbd5e1" }}>
+                    <strong style={{ color: "#0f766e", fontSize: "13px" }}>{sectionLabel[sec]}</strong>
+                    {(["NB", "TH", "VD", "VDC"] as Difficulty[]).map(d => (
+                      <div key={d} style={{ display: "flex", flexDirection: "column" }}>
+                        <label style={{ fontSize: "11px", color: "#0d9488", fontWeight: "600" }}>{diffLabel[d]}</label>
+                        <input type="number" min="0" value={matrix[sec][d]} onChange={e => updateMatrix(sec, d, Number(e.target.value))} style={{ padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff" }} />
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+            {tab === "exam" && (
+              <div>
+                <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+                  <div><h2 style={{ fontSize: "20px", margin: 0, color: "#0f766e" }}>Xem & Chỉnh sửa đề thi hiện tại</h2><p style={{ color: "#64748b", margin: 0, fontSize: "13px" }}>Quản lý nội dung, link Ảnh, Video và Bản ghi âm cho từng câu hỏi.</p></div>
+                  <button onClick={generateExam} style={{ background: "#f0fdf4", border: "1px solid #5eead4", padding: "8px 14px", borderRadius: "8px", cursor: "pointer", fontWeight: "600", color: "#0f766e" }}>🔄 Tạo đề mới</button>
+                </div>
+                {exam.length === 0 ? <div style={{ textAlign: "center", padding: "30px", color: "#64748b" }}>Chưa có đề. Vui lòng vào Ma trận & tạo đề.</div> : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+                    {exam.map((q, i) => (
+                      <div key={q.id} style={{ border: "1px solid #cbd5e1", padding: "16px", borderRadius: "10px", background: "#fdfefe" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                          <span style={{ fontWeight: "700", color: "#0d9488" }}>Câu {i + 1} ({q.section})</span>
+                          <span style={{ fontSize: "12px", background: "#f0fdf4", color: "#0f766e", padding: "2px 8px", borderRadius: "4px", border: "1px solid #5eead4" }}>Điểm: {q.points}</span>
+                        </div>
+                        <input 
+                          type="text" 
+                          value={q.content} 
+                          onChange={e => {
+                            const val = e.target.value;
+                            setExam(prev => prev.map((item, idx) => idx === i ? { ...item, content: val } : item));
+                          }}
+                          style={{ width: "100%", padding: "10px", border: "1px solid #cbd5e1", borderRadius: "6px", marginBottom: "10px", fontWeight: "600" }} 
+                        />
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginTop: "8px" }}>
+                          <div>
+                            <label style={{ fontSize: "11px", fontWeight: "600", color: "#0284c7" }}>🖼️ Link Ảnh minh họa:</label>
+                            <input 
+                              type="text" 
+                              placeholder="https://..." 
+                              value={q.imageUrl || ""} 
+                              onChange={e => {
+                                const val = e.target.value;
+                                setExam(prev => prev.map((item, idx) => idx === i ? { ...item, imageUrl: val } : item));
+                              }}
+                              style={{ width: "100%", padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "12px" }} 
+                            />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: "11px", fontWeight: "600", color: "#7c3aed" }}>🎥 Link Video:</label>
+                            <input 
+                              type="text" 
+                              placeholder="https://..." 
+                              value={q.videoUrl || ""} 
+                              onChange={e => {
+                                const val = e.target.value;
+                                setExam(prev => prev.map((item, idx) => idx === i ? { ...item, videoUrl: val } : item));
+                              }}
+                              style={{ width: "100%", padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "12px" }} 
+                            />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: "11px", fontWeight: "600", color: "#059669" }}>🔊 Link Audio:</label>
+                            <input 
+                              type="text" 
+                              placeholder="https://..." 
+                              value={q.audioUrl || ""} 
+                              onChange={e => {
+                                const val = e.target.value;
+                                setExam(prev => prev.map((item, idx) => idx === i ? { ...item, audioUrl: val } : item));
+                              }}
+                              style={{ width: "100%", padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "12px" }} 
+                            />
+                          </div>
+                        </div>
+                        {q.section === "TF" && q.subTfs && (
+                          <div style={{ marginTop: "12px", background: "#f8fafc", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1" }}>
+                            <div style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e", marginBottom: "6px" }}>Cấu hình 4 ý (a, b, c, d):</div>
+                            {q.subTfs.map((sub, sIdx) => (
+                              <div key={sub.id} style={{ display: "grid", gridTemplateColumns: "30px 1fr 100px 90px", gap: "8px", alignItems: "center", marginBottom: "6px" }}>
+                                <b style={{ color: "#0284c7" }}>{sub.id.toUpperCase()}.</b>
+                                <input 
+                                  type="text" 
+                                  value={sub.content} 
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    setExam(prev => prev.map((item, idx) => idx === i ? {
+                                      ...item,
+                                      subTfs: item.subTfs?.map((s, sI) => sI === sIdx ? { ...s, content: val } : s)
+                                    } : item));
+                                  }}
+                                  style={{ padding: "4px 8px", fontSize: "12px", border: "1px solid #cbd5e1", borderRadius: "4px" }}
+                                />
+                                <select 
+                                  value={sub.difficulty}
+                                  onChange={e => {
+                                    const val = e.target.value as Difficulty;
+                                    setExam(prev => prev.map((item, idx) => idx === i ? {
+                                      ...item,
+                                      subTfs: item.subTfs?.map((s, sI) => sI === sIdx ? { ...s, difficulty: val } : s)
+                                    } : item));
+                                  }}
+                                  style={{ padding: "4px", fontSize: "11px", border: "1px solid #cbd5e1", borderRadius: "4px" }}
+                                >
+                                  <option value="NB">Nhận biết</option>
+                                  <option value="TH">Thông hiểu</option>
+                                  <option value="VD">Vận dụng</option>
+                                </select>
+                                <label style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "11px", fontWeight: "600" }}>
+                                  <input 
+                                    type="checkbox" 
+                                    checked={sub.key} 
+                                    onChange={e => {
+                                      const val = e.target.checked;
+                                      setExam(prev => prev.map((item, idx) => idx === i ? {
+                                        ...item,
+                                        subTfs: item.subTfs?.map((s, sI) => sI === sIdx ? { ...s, key: val } : s)
+                                      } : item));
+                                    }}
+                                  /> Đúng
+                                </label>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {tab === "grading" && (
+              <div>
+                <h2 style={{ fontSize: "20px", color: "#0f766e", marginBottom: "10px" }}>Chấm bài & Tổng kết điểm</h2>
+                <p style={{ color: "#64748b", fontSize: "13px", marginBottom: "20px" }}>Xem kết quả tự động chấm điểm cho học sinh.</p>
+                <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "8px", border: "1px solid #cbd5e1" }}>
+                  <div style={{ fontSize: "16px", fontWeight: "700", color: "#0f766e", marginBottom: "10px" }}>Điểm hệ thống tự chấm: {autoScore.toFixed(2)}</div>
+                  <div style={{ fontSize: "18px", fontWeight: "900", color: "#047857" }}>Tổng điểm bài thi: {finalScore.toFixed(2)}</div>
+                </div>
+              </div>
+            )}
+            {tab === "stats" && (
+              <div>
+                <h2 style={{ fontSize: "20px", color: "#0f766e", marginBottom: "10px" }}>Thống kê phổ điểm</h2>
+                <p style={{ color: "#64748b", fontSize: "13px" }}>Phân tích kết quả làm bài của toàn bộ học sinh.</p>
+              </div>
+            )}
+          </div>
+        </section>
+      ) : (
+        <section style={{ maxWidth: "800px", margin: "24px auto", background: "#fff", padding: "30px", borderRadius: "14px", border: "1px solid #cbd5e1", boxShadow: "0 4px 12px -2px rgba(0,0,0,0.05)" }}>
+          {!submitted ? (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "2px solid #0d9488", paddingBottom: "15px", marginBottom: "20px" }}>
+                <div>
+                  <h2 style={{ margin: 0, color: "#0f766e", fontSize: "20px" }}>Bài kiểm tra Khoa học tự nhiên</h2>
+                  <p style={{ margin: "4px 0 0 0", fontSize: "13px", color: "#64748b" }}>Điền đầy đủ thông tin cá nhân và hoàn thành các câu hỏi dưới đây.</p>
+                </div>
+                <div style={{ background: "#ccfbf1", color: "#115e59", padding: "8px 14px", borderRadius: "8px", fontWeight: "700", border: "1px solid #2dd4bf" }}>
+                  ⏱️ Thời gian: {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginBottom: "20px" }}>
+                <input type="text" placeholder="Họ và tên học sinh" value={studentName} onChange={e => setStudentName(e.target.value)} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
+                <input type="text" placeholder="Lớp (Ví dụ: 7A)" value={studentClass} onChange={e => setStudentClass(e.target.value)} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
+                <input type="text" placeholder="Trường học" value={studentSchool} onChange={e => setStudentSchool(e.target.value)} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
+              </div>
+              {exam.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "40px", color: "#64748b" }}>Chưa có đề thi nào được tải. Vui lòng kiểm tra lại đường link hoặc yêu cầu giáo viên cung cấp đề.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                  {exam.map((q, qIdx) => (
+                    <div key={q.id} style={{ padding: "16px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #cbd5e1" }}>
+                      <div style={{ fontWeight: "700", color: "#0f766e", marginBottom: "8px" }}>Câu {qIdx + 1}: {q.content}</div>
+                      
+                      {q.imageUrl && <img src={q.imageUrl} alt="minh họa" style={{ maxWidth: "100%", maxHeight: "200px", borderRadius: "6px", marginBottom: "10px" }} />}
+                      {q.section === "MCQ" && q.options && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                          {q.options.map(opt => (
+                            <label key={opt.key} style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "13px" }}>
+                              <input 
+                                type="radio" 
+                                name={`q_${q.id}`} 
+                                checked={answers[q.id] === opt.key} 
+                                onChange={() => setAnswers(prev => ({ ...prev, [q.id]: opt.key }))} 
+                              />
+                              <b>{opt.key}.</b> {opt.text}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                      {q.section === "TF" && q.subTfs && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                          {q.subTfs.map(sub => (
+                            <div key={sub.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", padding: "8px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                              <span style={{ fontSize: "13px" }}><b>{sub.id.toUpperCase()}.</b> {sub.content}</span>
+                              <div style={{ display: "flex", gap: "12px" }}>
+                                <label style={{ fontSize: "12px", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}>
+                                  <input 
+                                    type="radio" 
+                                    name={`tf_${q.id}_${sub.id}`} 
+                                    checked={answers[q.id]?.[sub.id] === true}
+                                    onChange={() => setAnswers(prev => ({ ...prev, [q.id]: { ...(prev[q.id] || {}), [sub.id]: true } }))}
+                                  /> Đúng
+                                </label>
+                                <label style={{ fontSize: "12px", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}>
+                                  <input 
+                                    type="radio" 
+                                    name={`tf_${q.id}_${sub.id}`} 
+                                    checked={answers[q.id]?.[sub.id] === false}
+                                    onChange={() => setAnswers(prev => ({ ...prev, [q.id]: { ...(prev[q.id] || {}), [sub.id]: false } }))}
+                                  /> Sai
+                                </label>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {q.section === "SHORT" && (
+                        <input 
+                          type="text" 
+                          placeholder="Nhập câu trả lời ngắn..."
+                          value={answers[q.id] || ""}
+                          onChange={e => setAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
+                          style={{ width: "100%", padding: "8px", border: "1px solid #cbd5e1", borderRadius: "6px", marginTop: "6px" }}
+                        />
+                      )}
+                      {q.section === "ESSAY" && (
+                        <textarea 
+                          rows={3}
+                          placeholder="Trình bày bài làm tự luận..."
+                          value={answers[q.id] || ""}
+                          onChange={e => setAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
+                          style={{ width: "100%", padding: "8px", border: "1px solid #cbd5e1", borderRadius: "6px", marginTop: "6px" }}
+                        />
+                      )}
+                    </div>
+                  ))}
+                  <button onClick={submitExam} style={{ background: "#0d9488", color: "#fff", border: "none", padding: "12px 20px", borderRadius: "8px", fontWeight: "700", cursor: "pointer", fontSize: "15px", marginTop: "10px" }}>
+                    Nộp bài thi
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", padding: "20px" }}>
+              <h2 style={{ color: "#0f766e" }}>🎉 Hoàn thành bài thi!</h2>
+              <p style={{ color: "#64748b" }}>Cảm ơn bạn đã hoàn thành bài kiểm tra Khoa học tự nhiên.</p>
+              <div style={{ background: "#f0fdf4", border: "1px solid #5eead4", padding: "16px", borderRadius: "8px", display: "inline-block", marginTop: "10px" }}>
+                <span style={{ fontSize: "16px", fontWeight: "700", color: "#0f766e" }}>Điểm trắc nghiệm tự động: {autoScore.toFixed(2)} điểm</span>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+    </main>
+  );
 }
-
-function StudentView({exam,answers,setAnswers,current,setCurrent,seconds,setSeconds,studentName,setStudentName,submitExam,submitted}:{exam:Question[],answers:Record<string,any>,setAnswers:any,current:number,setCurrent:any,seconds:number,setSeconds:any,studentName:string,setStudentName:any,submitExam:()=>void,submitted:boolean}) {
-  const q=exam[current];
-  const [started,setStarted]=useState(false);
-  useMemo(()=>{ if(!started||submitted)return; const t=setInterval(()=>setSeconds((s:number)=>Math.max(0,s-1)),1000); return()=>clearInterval(t); },[started,submitted,setSeconds]);
-  if(!started) return <div className="student-start"><div className="glow-orb">⚛</div><h1>PHYSICS TEST ARENA</h1><p>Phòng kiểm tra Vật lí trực tuyến</p><input placeholder="Họ và tên học sinh" value={studentName} onChange={e=>setStudentName(e.target.value)}/><button className="primary-btn" onClick={()=>setStarted(true)} disabled={!studentName.trim()}>BẮT ĐẦU LÀM BÀI</button><small>Đề sẽ được xáo ngẫu nhiên theo ma trận giáo viên.</small></div>;
-  if(!exam.length) return <div className="student-start"><h1>Chưa có đề thi</h1><p>Giáo viên cần tạo đề trước.</p></div>;
-  const mm=String(Math.floor(seconds/60)).padStart(2,"0"), ss=String(seconds%60).padStart(2,"0");
-  return <div className="student-shell"><header className="student-top"><div><b>⚛ PHYSICS TEST ARENA</b><small>{studentName}</small></div><div className={`timer ${seconds<60?"danger":""}`}>⏱ {mm}:{ss}</div></header>
-    <div className="student-body"><aside className="question-nav"><h3>Danh sách câu</h3>{exam.map((x,i)=><button key={x.id} className={`${i===current?"current ":""}${answers[x.id]!==undefined?"answered":""}`} onClick={()=>setCurrent(i)}>{i+1}</button>)}<div className="legend"><span>● Đã trả lời</span><span>○ Chưa trả lời</span></div></aside>
-    <article className="question-card"><div className="q-meta"><Badge>{sectionLabel[q.section]}</Badge><span>Câu {current+1}/{exam.length}</span></div><h2>{q.content}</h2>{q.imageUrl&&<img className="question-image" src={q.imageUrl} alt="hình câu hỏi"/>}
-      {q.section==="MCQ"&&q.options?.map(o=><label className={`option ${answers[q.id]===o.key?"selected":""}`} key={o.key}><input type="radio" name={q.id} checked={answers[q.id]===o.key} onChange={()=>setAnswers((a:any)=>({...a,[q.id]:o.key}))}/><b>{o.key}.</b>{o.text}</label>)}
-      {q.section==="TF"&&<div className="tf-grid">{["a","b","c","d"].map((x,i)=><div className="tf-row" key={x}><span><b>{x})</b> Nhận định {x.toUpperCase()} của câu hỏi</span><button className={answers[q.id]?.[i]===true?"selected":""} onClick={()=>setAnswers((a:any)=>({...a,[q.id]:[...(a[q.id]||[undefined,undefined,undefined,undefined]).slice(0,i),true,...(a[q.id]||[]).slice(i+1)]}))}>Đúng</button><button className={answers[q.id]?.[i]===false?"selected":""} onClick={()=>setAnswers((a:any)=>({...a,[q.id]:[...(a[q.id]||[undefined,undefined,undefined,undefined]).slice(0,i),false,...(a[q.id]||[]).slice(i+1)]}))}>Sai</button></div>)}</div>}
-      {q.section==="SHORT"&&<input className="short-input" placeholder="Nhập đáp án..." value={answers[q.id]??""} onChange={e=>setAnswers((a:any)=>({...a,[q.id]:e.target.value}))}/>}
-      {q.section==="ESSAY"&&<textarea className="essay-input" placeholder="Trình bày bài làm..." value={answers[q.id]??""} onChange={e=>setAnswers((a:any)=>({...a,[q.id]:e.target.value}))}/>}
-      <div className="nav-actions"><button onClick={()=>setCurrent(Math.max(0,current-1))} disabled={current===0}>← Câu trước</button><span>{current<exam.length-1?"Có thể quay lại sửa bài trước khi nộp":"Đã đến câu cuối"}</span>{current<exam.length-1?<button className="primary-btn" onClick={()=>setCurrent(current+1)}>Câu tiếp →</button>:<button className="submit-btn" onClick={submitExam}>NỘP BÀI</button>}</div>
-    </article></div></div>;
-}
-
-function Metric({n,t}:{n:any,t:string}){return <div className="metric"><b>{n}</b><span>{t}</span></div>}
-function Badge({children}:{children:React.ReactNode}){return <span className="badge">{children}</span>}
-function Empty({text}:{text:string}){return <div className="empty">{text}</div>}
