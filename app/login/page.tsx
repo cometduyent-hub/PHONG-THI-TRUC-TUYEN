@@ -1,6 +1,6 @@
 "use client";
 import {FormEvent,useState} from "react";
-import {createClient} from "@/lib/supabase";
+import { createClient } from "@/lib/supabase";
 import {useRouter} from "next/navigation";
 
 export default function Login(){const [email,setEmail]=useState("");const [password,setPassword]=useState("");const [msg,setMsg]=useState("");const router=useRouter();
