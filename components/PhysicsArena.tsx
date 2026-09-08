@@ -235,6 +235,14 @@ export default function PhysicsArena() {
   const [antiCheatWarnings, setAntiCheatWarnings] = useState(0);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   
+  // Student Review & Lookup state additions
+  const [studentViewTab, setStudentViewTab] = useState<"take" | "lookup">("take");
+  const [lookupExamCode, setLookupExamCode] = useState("");
+  const [lookupStudentName, setLookupStudentName] = useState("");
+  const [lookupResult, setLookupResult] = useState<Submission | null>(null);
+  const [lookupQuestions, setLookupQuestions] = useState<Question[]>([]);
+  const [reviewFilter, setReviewFilter] = useState<"all" | "correct" | "incorrect" | "unanswered">("all");
+
   const [viewingSubmission, setViewingSubmission] = useState<Submission | null>(null);
   const [showDrawingModal, setShowDrawingModal] = useState(false);
   const [activeEssayQId, setActiveEssayQId] = useState<string | null>(null);
@@ -315,33 +323,83 @@ export default function PhysicsArena() {
       let studentAnswerStr = "";
       let correctAnswerStr = "";
       let isCorrect = false;
+      let isUnanswered = false;
       if (q.section === "MCQ") {
         studentAnswerStr = ans || "Chưa chọn";
         correctAnswerStr = q.correctOption || "";
         isCorrect = ans === q.correctOption;
+        isUnanswered = !ans;
       } else if (q.section === "TF") {
         studentAnswerStr = q.subTfs?.map(sub => `${sub.id.toUpperCase()}: ${ans?.[sub.id] === true ? 'Đúng' : ans?.[sub.id] === false ? 'Sai' : 'Chưa làm'}`).join(", ") || "";
         correctAnswerStr = q.subTfs?.map(sub => `${sub.id.toUpperCase()}: ${sub.key ? 'Đúng' : 'Sai'}`).join(", ") || "";
         const score = getQuestionAutoScore(q, ans);
         isCorrect = score === q.points;
+        isUnanswered = !ans || Object.keys(ans).length === 0;
       } else if (q.section === "SHORT") {
         studentAnswerStr = ans !== undefined && ans !== "" ? String(ans) : "Chưa trả lời";
         correctAnswerStr = q.shortAnswer || "";
         const score = getQuestionAutoScore(q, ans);
         isCorrect = score === q.points;
+        isUnanswered = ans === undefined || ans === "" || String(ans).trim() === "";
       } else if (q.section === "ESSAY") {
         studentAnswerStr = ans || "Không làm";
         correctAnswerStr = "(Chấm tự luận bởi giáo viên)";
         isCorrect = false;
+        isUnanswered = !ans;
       }
       return {
+        question: q,
         questionText: q.content,
         studentAnswer: studentAnswerStr,
         correctAnswer: correctAnswerStr,
-        isCorrect
+        isCorrect,
+        isUnanswered
       };
     });
   }, [submitted, exam, answers]);
+
+  // Handler for student lookup and review of past submissions
+  async function handleStudentLookup() {
+    if (!lookupExamCode.trim() || !lookupStudentName.trim()) {
+      alert("Vui lòng nhập đầy đủ Mã đề thi và Họ và tên học sinh để tra cứu!");
+      return;
+    }
+    if (!supabase) {
+      alert("Chưa cấu hình Supabase kết nối cơ sở dữ liệu.");
+      return;
+    }
+    // Fetch submission
+    const { data: subData, error: subError } = await supabase
+      .from("student_submissions")
+      .select("*")
+      .eq("exam_id", lookupExamCode.trim())
+      .ilike("student_name", `%${lookupStudentName.trim()}%`)
+      .order("submitted_at", { ascending: false })
+      .limit(1);
+
+    if (subError || !subData || subData.length === 0) {
+      alert("Không tìm thấy bài nộp phù hợp với thông tin đã nhập!");
+      setLookupResult(null);
+      return;
+    }
+    const foundSub = subData[0] as Submission;
+    setLookupResult(foundSub);
+
+    // Fetch exam questions data for this exam code
+    const { data: examData, error: examError } = await supabase
+      .from("exams")
+      .select("questions_data")
+      .eq("id", lookupExamCode.trim())
+      .single();
+
+    if (!examError && examData?.questions_data) {
+      setLookupQuestions(examData.questions_data as Question[]);
+    } else {
+      setLookupQuestions([]);
+    }
+    setNotice("Đã tìm thấy thông tin bài làm của học sinh!");
+  }
+
   function generateExam() {
     const selected: Question[] = [];
     (Object.keys(matrix) as Section[]).forEach(sec => {
@@ -1003,7 +1061,114 @@ export default function PhysicsArena() {
         </section>
       ) : (
         <section style={{ maxWidth: "900px", margin: "24px auto", background: "#fff", padding: "30px", borderRadius: "14px", border: "1px solid #cbd5e1", boxShadow: "0 4px 12px -2px rgba(0,0,0,0.05)" }}>
-          {!submitted ? (
+          {/* Student Sub-navigation: Take Exam vs Lookup & Review */}
+          <div style={{ display: "flex", gap: "10px", marginBottom: "20px", borderBottom: "1px solid #cbd5e1", paddingBottom: "12px" }}>
+            <button 
+              onClick={() => setStudentViewTab("take")}
+              style={{ padding: "8px 16px", borderRadius: "8px", border: studentViewTab === "take" ? "2px solid #0d9488" : "1px solid #cbd5e1", background: studentViewTab === "take" ? "#ccfbf1" : "#f8fafc", fontWeight: "700", color: "#0f766e", cursor: "pointer" }}
+            >
+              📝 Làm bài kiểm tra
+            </button>
+            <button 
+              onClick={() => setStudentViewTab("lookup")}
+              style={{ padding: "8px 16px", borderRadius: "8px", border: studentViewTab === "lookup" ? "2px solid #0d9488" : "1px solid #cbd5e1", background: studentViewTab === "lookup" ? "#ccfbf1" : "#f8fafc", fontWeight: "700", color: "#0f766e", cursor: "pointer" }}
+            >
+              🔍 Tra cứu & Xem lại bài làm
+            </button>
+          </div>
+
+          {studentViewTab === "lookup" ? (
+            <div>
+              <h3 style={{ color: "#0f766e", marginBottom: "8px", fontSize: "18px" }}>Tra cứu kết quả & Xem lại bài làm chi tiết</h3>
+              <p style={{ color: "#64748b", fontSize: "13px", marginBottom: "20px" }}>Nhập Mã đề thi và Họ tên học sinh để tra cứu điểm số và xem lại đáp án chi tiết bất kỳ lúc nào.</p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: "10px", marginBottom: "20px", alignItems: "end" }}>
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e", display: "block", marginBottom: "4px" }}>Mã đề thi:</label>
+                  <input 
+                    type="text" 
+                    placeholder="Nhập mã đề (VD: KHTN_...)" 
+                    value={lookupExamCode} 
+                    onChange={e => setLookupExamCode(e.target.value)} 
+                    style={{ width: "100%", padding: "10px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px" }} 
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e", display: "block", marginBottom: "4px" }}>Họ và tên học sinh:</label>
+                  <input 
+                    type="text" 
+                    placeholder="Nhập họ và tên đầy đủ" 
+                    value={lookupStudentName} 
+                    onChange={e => setLookupStudentName(e.target.value)} 
+                    style={{ width: "100%", padding: "10px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px" }} 
+                  />
+                </div>
+                <button 
+                  onClick={handleStudentLookup}
+                  style={{ background: "#0d9488", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "6px", fontWeight: "700", cursor: "pointer", fontSize: "13px", height: "41px" }}
+                >
+                  Tra cứu ngay
+                </button>
+              </div>
+
+              {lookupResult && (
+                <div style={{ marginTop: "24px", border: "1px solid #5eead4", background: "#f0fdf4", padding: "20px", borderRadius: "10px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "2px solid #2dd4bf", paddingBottom: "12px", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+                    <div>
+                      <h4 style={{ margin: 0, color: "#0f766e", fontSize: "16px" }}>Kết quả bài làm: {lookupResult.student_name} ({lookupResult.student_class})</h4>
+                      <span style={{ fontSize: "12px", color: "#64748b" }}>Trường: {lookupResult.student_school || "Không rõ"} · Nộp lúc: {new Date(lookupResult.submitted_at).toLocaleString("vi-VN")}</span>
+                    </div>
+                    <div style={{ display: "flex", gap: "12px" }}>
+                      <div style={{ background: "#fff", padding: "6px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "12px" }}>
+                        Điểm TN: <b>{Number(lookupResult.auto_score || 0).toFixed(2)}đ</b>
+                      </div>
+                      <div style={{ background: "#ccfbf1", padding: "6px 12px", borderRadius: "6px", border: "1px solid #2dd4bf", fontSize: "12px", color: "#115e59", fontWeight: "700" }}>
+                        Tổng điểm: <b>{Number(lookupResult.final_score ?? lookupResult.auto_score ?? 0).toFixed(2)}đ</b>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: "14px", fontWeight: "800", color: "#0f766e", marginBottom: "12px" }}>Chi tiết các câu hỏi & Đáp án:</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                    {lookupQuestions.map((q, qIdx) => {
+                      const stuAns = lookupResult.answers_data?.[q.id];
+                      let isCorrect = false;
+                      let stuAnsStr = "";
+                      let correctAnsStr = "";
+                      if (q.section === "MCQ") {
+                        stuAnsStr = stuAns || "Chưa chọn";
+                        correctAnsStr = q.correctOption || "";
+                        isCorrect = stuAns === q.correctOption;
+                      } else if (q.section === "TF") {
+                        stuAnsStr = q.subTfs?.map(sub => `${sub.id.toUpperCase()}: ${stuAns?.[sub.id] === true ? 'Đúng' : stuAns?.[sub.id] === false ? 'Sai' : 'Chưa làm'}`).join(", ") || "";
+                        correctAnsStr = q.subTfs?.map(sub => `${sub.id.toUpperCase()}: ${sub.key ? 'Đúng' : 'Sai'}`).join(", ") || "";
+                        isCorrect = getQuestionAutoScore(q, stuAns) === q.points;
+                      } else if (q.section === "SHORT") {
+                        stuAnsStr = stuAns !== undefined && stuAns !== "" ? String(stuAns) : "Chưa trả lời";
+                        correctAnsStr = q.shortAnswer || "";
+                        isCorrect = getQuestionAutoScore(q, stuAns) === q.points;
+                      } else if (q.section === "ESSAY") {
+                        stuAnsStr = stuAns || "Không làm";
+                        correctAnsStr = "(Chấm tự luận bởi giáo viên)";
+                      }
+
+                      return (
+                        <div key={q.id} style={{ background: "#fff", padding: "14px", borderRadius: "8px", border: `1px solid ${q.section === 'ESSAY' ? '#cbd5e1' : (isCorrect ? '#86efac' : '#fca5a5')}` }}>
+                          <div style={{ fontWeight: "700", color: "#0f766e", marginBottom: "6px", fontSize: "13px" }}>
+                            Câu {qIdx + 1} ({sectionLabel[q.section]} - {q.points}đ)
+                          </div>
+                          <div style={{ marginBottom: "8px", fontSize: "13px", color: "#334155" }}>{q.content}</div>
+                          <div style={{ fontSize: "13px", background: "#f8fafc", padding: "8px", borderRadius: "6px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                            <div>- Bạn đã chọn / trả lời: <b style={{ color: q.section === 'ESSAY' ? '#0284c7' : (isCorrect ? '#059669' : '#dc2626') }}>{stuAnsStr}</b></div>
+                            {q.section !== 'ESSAY' && <div>- Đáp án chuẩn: <b style={{ color: "#059669" }}>{correctAnsStr}</b></div>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (!submitted ? (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "2px solid #0d9488", paddingBottom: "15px", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
                 <div>
@@ -1284,22 +1449,58 @@ export default function PhysicsArena() {
                   </div>
                 </div>
               </div>
+
+              {/* Enhanced Review Filters */}
+              <div style={{ display: "flex", gap: "8px", margin: "20px 0", flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ fontSize: "13px", fontWeight: "700", color: "#0f766e" }}>Lọc kết quả xem lại:</span>
+                {(["all", "correct", "incorrect", "unanswered"] as const).map(f => {
+                  const labels = { all: "Tất cả", correct: "Đúng", incorrect: "Sai", unanswered: "Chưa làm" };
+                  return (
+                    <button
+                      key={f}
+                      onClick={() => setReviewFilter(f)}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: "6px",
+                        border: reviewFilter === f ? "2px solid #0d9488" : "1px solid #cbd5e1",
+                        background: reviewFilter === f ? "#ccfbf1" : "#f8fafc",
+                        fontWeight: "700",
+                        fontSize: "12px",
+                        color: "#0f766e",
+                        cursor: "pointer"
+                      }}
+                    >
+                      {labels[f]}
+                    </button>
+                  );
+                })}
+              </div>
+
               <div style={{ marginTop: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
                 <h3 style={{ fontSize: "16px", fontWeight: "800", color: "#0f766e" }}>Chi tiết bài làm và đáp án:</h3>
-                {submissionDetails.map((item, index) => (
-                  <div key={index} style={{ padding: "14px", borderRadius: "8px", border: `1px solid ${item.isCorrect ? '#86efac' : '#fca5a5'}`, background: item.isCorrect ? '#f0fdf4' : '#fef2f2' }}>
-                    <p style={{ fontWeight: "700", color: "#1e293b", margin: "0 0 6px 0", fontSize: "13px" }}>Câu {index + 1}: {item.questionText}</p>
+                {submissionDetails
+                  .filter(item => {
+                    if (reviewFilter === "correct") return item.isCorrect;
+                    if (reviewFilter === "incorrect") return !item.isCorrect && !item.isUnanswered && item.question.section !== "ESSAY";
+                    if (reviewFilter === "unanswered") return item.isUnanswered;
+                    return true;
+                  })
+                  .map((item, index) => (
+                  <div key={index} style={{ padding: "14px", borderRadius: "8px", border: `1px solid ${item.question.section === 'ESSAY' ? '#cbd5e1' : (item.isCorrect ? '#86efac' : '#fca5a5')}`, background: item.question.section === 'ESSAY' ? '#f8fafc' : (item.isCorrect ? '#f0fdf4' : '#fef2f2') }}>
+                    <p style={{ fontWeight: "700", color: "#1e293b", margin: "0 0 6px 0", fontSize: "13px" }}>Câu {index + 1} ({sectionLabel[item.question.section]} - {item.question.points}đ): {item.questionText}</p>
                     <p style={{ fontSize: "13px", margin: "4px 0" }}>
                       - Đáp án bạn chọn: <span style={{ fontWeight: "700" }}>{item.studentAnswer}</span>
                     </p>
-                    <p style={{ fontSize: "13px", margin: "4px 0" }}>
-                      - Đáp án đúng chuẩn: <span style={{ fontWeight: "700", color: "#059669" }}>{item.correctAnswer}</span>
-                    </p>
+                    {item.question.section !== "ESSAY" && (
+                      <p style={{ fontSize: "13px", margin: "4px 0" }}>
+                        - Đáp án đúng chuẩn: <span style={{ fontWeight: "700", color: "#059669" }}>{item.correctAnswer}</span>
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
             </div>
-          )}
+          ))}
         </section>
       )}
     </main>
