@@ -221,6 +221,9 @@ export default function PhysicsArena() {
   const [antiCheatWarnings, setAntiCheatWarnings] = useState(0);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   
+  // State quản lý tính năng xem lại bài làm chi tiết của học sinh
+  const [viewingSubmission, setViewingSubmission] = useState<Submission | null>(null);
+
   const [showDrawingModal, setShowDrawingModal] = useState(false);
   const [activeEssayQId, setActiveEssayQId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -558,7 +561,7 @@ export default function PhysicsArena() {
               ĐẤU TRƯỜNG KHOA HỌC TỰ NHIÊN
             </h1>
             <div style={{ fontSize: "12px", color: "#047857", fontWeight: "700", marginTop: "2px" }}>
-              Hệ thống ôn tập & kiểm tra trực tuyến chuẩn cấp 2 (Phú Xuân, Huế)
+              Hệ thống ôn tập & kiểm tra trực tuyến chuẩn cấp 2 (THẦY TUẤN)
             </div>
           </div>
         </div>
@@ -817,25 +820,126 @@ export default function PhysicsArena() {
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <div><h2 style={{ fontSize: "20px", color: "#0f766e", marginBottom: "6px" }}>Chấm bài & Kết quả</h2>
-                  <p style={{ color: "#64748b", fontSize: "13px" }}>Tải kết quả từ Supabase, chấm tự luận và xuất Excel.</p></div>
+                  <p style={{ color: "#64748b", fontSize: "13px" }}>Tải kết quả từ Supabase, chấm tự luận, xem lại bài làm chi tiết và xuất Excel.</p></div>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={loadSubmissions} style={{ padding: "9px 12px", borderRadius: 8, border: "1px solid #5eead4", background: "#f0fdf4", cursor: "pointer" }}>🔄 Tải kết quả</button>
-                    <button onClick={exportSubmissionsExcel} style={{ padding: "9px 12px", borderRadius: 8, border: "none", background: "#0284c7", color: "#fff", cursor: "pointer" }}>📊 Xuất Excel</button>
+                    <button onClick={loadSubmissions} style={{ padding: "9px 12px", borderRadius: 8, border: "1px solid #5eead4", background: "#f0fdf4", cursor: "pointer", fontWeight: "600", color: "#0f766e" }}>🔄 Tải kết quả</button>
+                    <button onClick={exportSubmissionsExcel} style={{ padding: "9px 12px", borderRadius: 8, border: "none", background: "#0284c7", color: "#fff", cursor: "pointer", fontWeight: "600" }}>📊 Xuất Excel</button>
                   </div>
                 </div>
                 <div style={{ marginTop: 18, background: "#f8fafc", padding: 16, borderRadius: 8, border: "1px solid #cbd5e1" }}>
-                  <b>Đề hiện tại: {examCodeId || "chưa xuất mã"}</b> · Điểm tự động của bài đang xem: <b>{autoScore.toFixed(2)}</b>
+                  <b>Đề hiện tại: {examCodeId || "chưa xuất mã"}</b> · Tổng số bài đã nộp: <b>{submissions.length}</b>
                 </div>
-                {submissions.length > 0 && <div style={{ overflowX: "auto", marginTop: 16 }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                    <thead><tr style={{ background: "#f8fafc" }}>{["STT","Họ tên","Lớp","Điểm tự động","Tự luận","Tổng","Nộp lúc"].map(h => <th key={h} style={{ padding: 9, border: "1px solid #cbd5e1", textAlign: "left" }}>{h}</th>)}</tr></thead>
-                    <tbody>{submissions.map((s,i)=><tr key={s.id || i}>
-                      <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{i+1}</td><td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{s.student_name}</td><td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{s.student_class}</td>
-                      <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{Number(s.auto_score || 0).toFixed(2)}</td><td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{Number(s.essay_score || 0).toFixed(2)}</td>
-                      <td style={{ padding: 9, border: "1px solid #cbd5e1", fontWeight: 800 }}>{Number(s.final_score ?? s.auto_score ?? 0).toFixed(2)}</td><td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{new Date(s.submitted_at).toLocaleString("vi-VN")}</td>
-                    </tr>)}</tbody>
-                  </table>
-                </div>}
+                {submissions.length > 0 && (
+                  <div style={{ overflowX: "auto", marginTop: 16 }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: "#f8fafc" }}>
+                          {["STT", "Họ tên", "Lớp", "Điểm tự động", "Tự luận", "Tổng", "Nộp lúc", "Thao tác"].map(h => (
+                            <th key={h} style={{ padding: 9, border: "1px solid #cbd5e1", textAlign: "left" }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {submissions.map((s, i) => (
+                          <tr key={s.id || i}>
+                            <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{i + 1}</td>
+                            <td style={{ padding: 9, border: "1px solid #cbd5e1" }}><b>{s.student_name}</b></td>
+                            <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{s.student_class}</td>
+                            <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{Number(s.auto_score || 0).toFixed(2)}</td>
+                            <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{Number(s.essay_score || 0).toFixed(2)}</td>
+                            <td style={{ padding: 9, border: "1px solid #cbd5e1", fontWeight: 800, color: "#0f766e" }}>{Number(s.final_score ?? s.auto_score ?? 0).toFixed(2)}</td>
+                            <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{new Date(s.submitted_at).toLocaleString("vi-VN")}</td>
+                            <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>
+                              <button 
+                                onClick={() => setViewingSubmission(s)}
+                                style={{ background: "#ccfbf1", color: "#115e59", border: "1px solid #5eead4", padding: "4px 10px", borderRadius: "6px", cursor: "pointer", fontWeight: "700", fontSize: "12px" }}
+                              >
+                                👁️ Xem bài làm
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* MODAL GIÁO VIÊN XEM LẠI BÀI LÀM CHI TIẾT CỦA HỌC SINH */}
+                {viewingSubmission && (
+                  <div style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+                    <div style={{ background: "#fff", padding: "24px", borderRadius: "12px", width: "750px", maxWidth: "95%", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "2px solid #0d9488", paddingBottom: "12px", marginBottom: "16px" }}>
+                        <div>
+                          <h3 style={{ margin: 0, color: "#0f766e", fontSize: "18px" }}>Chi tiết bài làm: {viewingSubmission.student_name} ({viewingSubmission.student_class})</h3>
+                          <span style={{ fontSize: "12px", color: "#64748b" }}>Trường: {viewingSubmission.student_school || "Không rõ"} · Nộp lúc: {new Date(viewingSubmission.submitted_at).toLocaleString("vi-VN")}</span>
+                        </div>
+                        <button onClick={() => setViewingSubmission(null)} style={{ background: "none", border: "none", fontSize: "20px", cursor: "pointer", fontWeight: "bold", color: "#64748b" }}>✕</button>
+                      </div>
+
+                      <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "8px", border: "1px solid #cbd5e1", marginBottom: "16px", display: "flex", gap: "20px", fontSize: "13px" }}>
+                        <div>Điểm trắc nghiệm: <b>{Number(viewingSubmission.auto_score || 0).toFixed(2)}đ</b></div>
+                        <div>Tổng điểm: <b style={{ color: "#0f766e" }}>{Number(viewingSubmission.final_score ?? viewingSubmission.auto_score ?? 0).toFixed(2)}đ</b></div>
+                      </div>
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                        {exam.map((q, qIdx) => {
+                          const stuAns = viewingSubmission.answers_data?.[q.id];
+                          return (
+                            <div key={q.id} style={{ border: "1px solid #cbd5e1", padding: "14px", borderRadius: "8px", background: "#fdfefe" }}>
+                              <div style={{ fontWeight: "700", color: "#0f766e", marginBottom: "6px", fontSize: "13px" }}>
+                                Câu {qIdx + 1} ({sectionLabel[q.section]} - {q.points}đ)
+                              </div>
+                              <div style={{ marginBottom: "8px", fontSize: "13px", color: "#334155" }}>{q.content}</div>
+
+                              {/* Hiển thị chi tiết đáp án tùy theo dạng câu hỏi */}
+                              {q.section === "MCQ" && (
+                                <div style={{ fontSize: "13px", background: "#f8fafc", padding: "8px", borderRadius: "6px" }}>
+                                  <div>Học sinh chọn: <b style={{ color: stuAns === q.correctOption ? "#059669" : "#dc2626" }}>{stuAns || "Chưa chọn"}</b></div>
+                                  <div>Đáp án đúng: <b style={{ color: "#059669" }}>{q.correctOption}</b></div>
+                                </div>
+                              )}
+
+                              {q.section === "TF" && q.subTfs && (
+                                <div style={{ fontSize: "13px", background: "#f8fafc", padding: "8px", borderRadius: "6px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                                  {q.subTfs.map(sub => {
+                                    const uVal = stuAns?.[sub.id];
+                                    const isCorrect = uVal === sub.key;
+                                    return (
+                                      <div key={sub.id} style={{ display: "flex", justifyContent: "space-between" }}>
+                                        <span><b>{sub.id.toUpperCase()}.</b> {sub.content}</span>
+                                        <span>HS chọn: <b style={{ color: isCorrect ? "#059669" : "#dc2626" }}>{uVal === undefined ? "Chưa làm" : (uVal ? "Đúng" : "Sai")}</b> (Đáp án: {sub.key ? "Đúng" : "Sai"})</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                              {q.section === "SHORT" && (
+                                <div style={{ fontSize: "13px", background: "#f8fafc", padding: "8px", borderRadius: "6px" }}>
+                                  <div>Học sinh trả lời: <b style={{ color: "#0284c7" }}>{stuAns !== undefined && stuAns !== "" ? stuAns : "Chưa trả lời"}</b></div>
+                                  <div>Đáp án chuẩn: <b style={{ color: "#059669" }}>{q.shortAnswer}</b> (Sai số cho phép: ±{q.tolerance || 0})</div>
+                                </div>
+                              )}
+
+                              {q.section === "ESSAY" && (
+                                <div style={{ fontSize: "13px", background: "#f8fafc", padding: "8px", borderRadius: "6px" }}>
+                                  <div>Bài làm tự luận của học sinh:</div>
+                                  <div style={{ background: "#fff", padding: "8px", border: "1px solid #cbd5e1", borderRadius: "4px", marginTop: "4px", whiteSpace: "pre-wrap", color: "#1e293b" }}>
+                                    {stuAns || "Học sinh không làm phần này."}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "20px" }}>
+                        <button onClick={() => setViewingSubmission(null)} style={{ background: "#0d9488", color: "#fff", border: "none", padding: "8px 16px", borderRadius: "8px", cursor: "pointer", fontWeight: "700" }}>Đóng cửa sổ</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             {tab === "stats" && (
