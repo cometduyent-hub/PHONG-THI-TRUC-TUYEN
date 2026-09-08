@@ -49,8 +49,6 @@ type Submission = {
   answers_data: Record<string, any>;
   submitted_at: string;
 };
-
-// ĐOẠN CODE CHẤM ĐIỂM ĐÚNG / SAI CHUẨN ĐƯỢC TÍCH HỢP VÀO
 function scoreTF(userAns: Record<string, boolean> | undefined, subTfs: SubTFItem[] | undefined, totalPoint: number): number {
   if (!subTfs || !userAns) return 0;
   let wrongCount = 0;
@@ -67,7 +65,6 @@ function scoreTF(userAns: Record<string, boolean> | undefined, subTfs: SubTFItem
   else if (wrongCount >= 4) deduction = totalPoint;
   return Math.max(0, totalPoint - deduction);
 }
-
 function getQuestionAutoScore(q: Question, answer: any): number {
   if (q.section === "MCQ") return answer === q.correctOption ? q.points : 0;
   if (q.section === "TF") return scoreTF(answer, q.subTfs, q.points);
@@ -80,7 +77,6 @@ function getQuestionAutoScore(q: Question, answer: any): number {
   }
   return 0;
 }
-
 const seed: Question[] = [
   { 
     id: "KHTN001", 
@@ -133,23 +129,19 @@ const seed: Question[] = [
     points: 2.0 
   }
 ];
-
 const defaultMatrix: Matrix = {
   MCQ: { NB: 1, TH: 1, VD: 0, VDC: 0 },
   TF: { NB: 0, TH: 1, VD: 0, VDC: 0 },
   SHORT: { NB: 0, TH: 1, VD: 0, VDC: 0 },
   ESSAY: { NB: 0, TH: 0, VD: 1, VDC: 0 }
 };
-
 const sectionLabel: Record<Section, string> = { 
   MCQ: "Phần I: Trắc nghiệm nhiều lựa chọn", 
   TF: "Phần II: Trắc nghiệm đúng / sai", 
   SHORT: "Phần III: Trắc nghiệm trả lời ngắn", 
   ESSAY: "Phần IV: Tự luận" 
 };
-
 const diffLabel: Record<Difficulty, string> = { NB: "Nhận biết", TH: "Thông hiểu", VD: "Vận dụng", VDC: "Vận dụng cao" };
-
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -158,7 +150,6 @@ function shuffle<T>(arr: T[]): T[] {
   }
   return a;
 }
-
 function shuffleExamSections(questionList: Question[]): Question[] {
   const mcq = questionList.filter(q => q.section === "MCQ");
   const tf = questionList.filter(q => q.section === "TF");
@@ -179,7 +170,6 @@ function shuffleExamSections(questionList: Question[]): Question[] {
     ...shuffleArray(essay)
   ];
 }
-
 function parseRow(r: Record<string, any>): Question {
   const section = String(r.section || "MCQ").toUpperCase() as Section;
   const options = ["A", "B", "C", "D"].map(k => ({ key: k, text: String(r[`option${k}`] ?? r[`option_${k.toLowerCase()}`] ?? "") })).filter(x => x.text);
@@ -209,7 +199,6 @@ function parseRow(r: Record<string, any>): Question {
     points: Number(r.points || (section === "MCQ" ? 0.25 : section === "TF" ? 1.0 : section === "SHORT" ? 0.5 : 2.0))
   };
 }
-
 export default function PhysicsArena() {
   const [mode, setMode] = useState<"teacher" | "student">("teacher");
   const [tab, setTab] = useState<"bank" | "matrix" | "exam" | "grading" | "stats">("bank");
@@ -240,10 +229,8 @@ export default function PhysicsArena() {
   const essayTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const deadlineRef = useRef<number | null>(null);
   const submitExamRef = useRef<() => void>(() => undefined);
-
   useEffect(() => { answersRef.current = answers; }, [answers]);
   useEffect(() => { examRef.current = exam; }, [exam]);
-
   useEffect(() => {
     if (mode === "student" && exam.length > 0 && !submitted && !deadlineRef.current) {
       const startSeconds = Math.max(1, seconds || examMinutes * 60);
@@ -251,7 +238,6 @@ export default function PhysicsArena() {
       setSeconds(startSeconds);
     }
   }, [mode, exam.length, submitted]);
-
   useEffect(() => {
     if (mode !== "student" || exam.length === 0 || submitted || !deadlineRef.current) return;
     const tick = () => {
@@ -263,7 +249,6 @@ export default function PhysicsArena() {
     const timer = window.setInterval(tick, 250);
     return () => window.clearInterval(timer);
   }, [mode, exam.length, submitted]);
-
   useEffect(() => {
     if (mode !== "student" || exam.length === 0 || submitted) return;
     const onVisibility = () => {
@@ -275,7 +260,6 @@ export default function PhysicsArena() {
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [mode, exam.length, submitted]);
-
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const examId = params.get("exam");
@@ -307,11 +291,9 @@ export default function PhysicsArena() {
       fetchExamFromCloud();
     }
   }, []);
-
   const autoScore = useMemo(() => exam.reduce((sum, q) => sum + getQuestionAutoScore(q, answers[q.id]), 0), [exam, answers]);
   const essayTotalScore = Object.values(essayScores).reduce((a, b) => a + b, 0);
   const finalScore = autoScore + essayTotalScore;
-
   function generateExam() {
     const selected: Question[] = [];
     (Object.keys(matrix) as Section[]).forEach(sec => {
@@ -344,7 +326,6 @@ export default function PhysicsArena() {
         : `Đã tạo đề ${randomized.length} câu thành công với thời gian ${examMinutes} phút.`
     );
   }
-
   async function handlePublishAndGetLink() {
     if (!supabase) {
       alert("Chưa cấu hình Supabase. Hãy thêm NEXT_PUBLIC_SUPABASE_URL và NEXT_PUBLIC_SUPABASE_ANON_KEY trên Vercel.");
@@ -369,10 +350,17 @@ export default function PhysicsArena() {
       prompt("Đã xuất link thành công! Thầy hãy copy đường link sau gửi cho học sinh:", shareLink);
     }
   }
-
   function updateMatrix(sec: Section, d: Difficulty, value: number) {
     setMatrix(m => ({ ...m, [sec]: { ...m[sec], [d]: Math.max(0, Math.floor(value || 0)) } }));
   }
+
+  // Hàm chuẩn hóa cập nhật thuộc tính cho câu hỏi Đúng/Sai (TF)
+  const updateSubTfProperty = (qIndex: number, subIndex: number, field: keyof SubTFItem, value: any) => {
+    setExam(prev => prev.map((item, idx) => idx === qIndex ? {
+      ...item,
+      subTfs: item.subTfs?.map((s, sI) => sI === subIndex ? { ...s, [field]: value } : s)
+    } : item));
+  };
 
   function downloadExcelTemplate() {
     const templateData = [
@@ -452,7 +440,6 @@ export default function PhysicsArena() {
     XLSX.utils.book_append_sheet(wb, ws, "Mau_4_Dang_Cau_Hoi");
     XLSX.writeFile(wb, "File_Mau_Ngan_Hang_KHTN_Full.xlsx");
   }
-
   function importFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
@@ -474,7 +461,6 @@ export default function PhysicsArena() {
     };
     if (file.name.endsWith(".json")) reader.readAsText(file); else reader.readAsArrayBuffer(file);
   }
-
   function handleMediaUpload(qId: string, type: "imageUrl" | "videoUrl" | "audioUrl", file: File) {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -484,7 +470,6 @@ export default function PhysicsArena() {
     };
     reader.readAsDataURL(file);
   }
-
   function insertSymbolToEssay(qId: string, symbol: string) {
     const textarea = essayTextareaRefs.current[qId];
     const currentVal = answers[qId] || "";
@@ -501,7 +486,6 @@ export default function PhysicsArena() {
       textarea.setSelectionRange(start + symbol.length, start + symbol.length);
     }, 0);
   }
-
   async function submitExam() {
     if (submitted) return;
     const currentAnswers = answersRef.current;
@@ -533,7 +517,6 @@ export default function PhysicsArena() {
     setNotice("Bài đã được nộp, chấm tự động và lưu trên Supabase thành công!");
   }
   submitExamRef.current = submitExam;
-
   async function loadSubmissions() {
     if (!supabase || !examCodeId) {
       setNotice("Chưa có kết nối Supabase hoặc chưa có mã đề.");
@@ -546,7 +529,6 @@ export default function PhysicsArena() {
     if (error) { setNotice("Không tải được kết quả: " + error.message); return; }
     setSubmissions((data || []) as Submission[]);
   }
-
   function exportSubmissionsExcel() {
     if (!submissions.length) { setNotice("Chưa có kết quả để xuất Excel."); return; }
     const rows = submissions.map((s, i) => ({
@@ -559,7 +541,6 @@ export default function PhysicsArena() {
     XLSX.utils.book_append_sheet(wb, ws, "Kết quả");
     XLSX.writeFile(wb, `Ket_qua_${examCodeId || "KHTN"}.xlsx`);
   }
-
   return (
     <main className="app-shell" style={{ 
       fontFamily: "Inter, system-ui, Arial, sans-serif", 
@@ -792,24 +773,12 @@ export default function PhysicsArena() {
                                 <input 
                                   type="text" 
                                   value={sub.content} 
-                                  onChange={e => {
-                                    const val = e.target.value;
-                                    setExam(prev => prev.map((item, idx) => idx === i ? {
-                                      ...item,
-                                      subTfs: item.subTfs?.map((s, sI) => sI === sIdx ? { ...s, content: val } : s)
-                                    } : item));
-                                  }}
+                                  onChange={e => updateSubTfProperty(i, sIdx, "content", e.target.value)}
                                   style={{ padding: "6px 8px", fontSize: "12px", border: "1px solid #cbd5e1", borderRadius: "4px" }}
                                 />
                                 <select 
                                   value={sub.difficulty}
-                                  onChange={e => {
-                                    const val = e.target.value as Difficulty;
-                                    setExam(prev => prev.map((item, idx) => idx === i ? {
-                                      ...item,
-                                      subTfs: item.subTfs?.map((s, sI) => sI === sIdx ? { ...s, difficulty: val } : s)
-                                    } : item));
-                                  }}
+                                  onChange={e => updateSubTfProperty(i, sIdx, "difficulty", e.target.value as Difficulty)}
                                   style={{ padding: "6px", fontSize: "11px", border: "1px solid #cbd5e1", borderRadius: "4px", fontWeight: "600", color: "#0f766e" }}
                                 >
                                   <option value="NB">Nhận biết</option>
@@ -821,13 +790,7 @@ export default function PhysicsArena() {
                                   <input 
                                     type="checkbox" 
                                     checked={sub.key} 
-                                    onChange={e => {
-                                      const val = e.target.checked;
-                                      setExam(prev => prev.map((item, idx) => idx === i ? {
-                                        ...item,
-                                        subTfs: item.subTfs?.map((s, sI) => sI === sIdx ? { ...s, key: val } : s)
-                                      } : item));
-                                    }}
+                                    onChange={e => updateSubTfProperty(i, sIdx, "key", e.target.checked)}
                                   /> Đúng
                                 </label>
                               </div>
