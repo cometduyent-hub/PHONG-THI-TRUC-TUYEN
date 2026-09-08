@@ -215,7 +215,7 @@ function parseRow(r: Record<string, any>): Question {
 }
 export default function PhysicsArena() {
   const [mode, setMode] = useState<"teacher" | "student">("teacher");
-  const [tab, setTab] = useState<"bank" | "matrix" | "exam" | "grading" | "stats">("bank");
+  const [tab, setTab] = useState<"bank" | "matrix" | "exam" | "grading" | "stats" | "ai_gen">("bank");
   const [questions, setQuestions] = useState<Question[]>(seed);
   const [matrix, setMatrix] = useState<Matrix>(defaultMatrix);
   const [examMinutes, setExamMinutes] = useState<number>(45); 
@@ -235,6 +235,14 @@ export default function PhysicsArena() {
   const [antiCheatWarnings, setAntiCheatWarnings] = useState(0);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   
+  // AI Question Generation States
+  const [aiTopic, setAiTopic] = useState("Trao đổi chất và chuyển hóa năng lượng ở sinh vật");
+  const [aiGrade, setAiGrade] = useState("7");
+  const [aiSection, setAiSection] = useState<Section>("MCQ");
+  const [aiCount, setAiCount] = useState<number>(3);
+  const [aiGeneratedQuestions, setAiGeneratedQuestions] = useState<Question[]>([]);
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+
   // Student Review & Lookup state additions
   const [studentViewTab, setStudentViewTab] = useState<"take" | "lookup">("take");
   const [lookupExamCode, setLookupExamCode] = useState("");
@@ -246,13 +254,12 @@ export default function PhysicsArena() {
   const [showDrawingModal, setShowDrawingModal] = useState(false);
   const [activeEssayQId, setActiveEssayQId] = useState<string | null>(null);
   
-  // Canvas drawing state managed via useRef (optimized for high-performance rendering & diagram features)[cite: 4]
+  // Canvas drawing state managed via useRef (optimized for high-performance rendering & diagram features)
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDrawingRef = useRef(false);
   const drawColorRef = useRef("#0f766e");
   const drawWidthRef = useRef(2);
   const toolRef = useRef<"pen" | "eraser">("pen");
-
   const essayTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const deadlineRef = useRef<number | null>(null);
   const submitExamRef = useRef<() => void>(() => undefined);
@@ -362,6 +369,81 @@ export default function PhysicsArena() {
       };
     });
   }, [submitted, exam, answers]);
+
+  // AI Question Generation Simulation / Logic Function
+  async function handleAIGenerate() {
+    setIsGeneratingAi(true);
+    setTimeout(() => {
+      const mockGenerated: Question[] = [];
+      for (let i = 1; i <= aiCount; i++) {
+        const id = "AI_GEN_" + Date.now() + "_" + i;
+        if (aiSection === "MCQ") {
+          mockGenerated.push({
+            id,
+            section: "MCQ",
+            subject: "Khoa học tự nhiên",
+            grade: aiGrade,
+            topic: aiTopic,
+            difficulty: "TH",
+            content: `[AI tạo] Câu hỏi trắc nghiệm số ${i} về chủ đề "${aiTopic}" (KHTN lớp ${aiGrade})?`,
+            options: [
+              { key: "A", text: "Đáp án đúng chuẩn khoa học cho câu hỏi này" },
+              { key: "B", text: "Phương án nhiễu thứ nhất thường gặp" },
+              { key: "C", text: "Phương án nhiễu thứ hai" },
+              { key: "D", text: "Phương án nhiễu thứ ba" }
+            ],
+            correctOption: "A",
+            points: 0.25
+          });
+        } else if (aiSection === "TF") {
+          mockGenerated.push({
+            id,
+            section: "TF",
+            subject: "Khoa học tự nhiên",
+            grade: aiGrade,
+            topic: aiTopic,
+            difficulty: "TH",
+            content: `[AI tạo] Nhận định các phát biểu sau về chủ đề "${aiTopic}":`,
+            subTfs: [
+              { id: "a", content: "Phát biểu thứ nhất mô tả đúng bản chất hiện tượng.", key: true, difficulty: "NB" },
+              { id: "b", content: "Phát biểu thứ hai có chứa chi tiết sai về mặt định lượng.", key: false, difficulty: "TH" },
+              { id: "c", content: "Phát biểu thứ ba phản ánh đúng ứng dụng thực tế.", key: true, difficulty: "VD" },
+              { id: "d", content: "Phát biểu thứ tư là kết luận chưa chính xác.", key: false, difficulty: "TH" }
+            ],
+            points: 1.0
+          });
+        } else if (aiSection === "SHORT") {
+          mockGenerated.push({
+            id,
+            section: "SHORT",
+            subject: "Khoa học tự nhiên",
+            grade: aiGrade,
+            topic: aiTopic,
+            difficulty: "VD",
+            content: `[AI tạo] Tính toán hoặc xác định giá trị ngắn gọn cho bài toán thuộc chủ đề "${aiTopic}":`,
+            shortAnswer: "100",
+            tolerance: 0.1,
+            points: 0.5
+          });
+        } else {
+          mockGenerated.push({
+            id,
+            section: "ESSAY",
+            subject: "Khoa học tự nhiên",
+            grade: aiGrade,
+            topic: aiTopic,
+            difficulty: "VDC",
+            content: `[AI tạo] Trình bày bản chất, ý nghĩa và giải thích chi tiết hiện tượng liên quan đến "${aiTopic}".`,
+            points: 2.0
+          });
+        }
+      }
+      setAiGeneratedQuestions(mockGenerated);
+      setIsGeneratingAi(false);
+      setNotice(`🤖 AI đã soạn thành công ${aiCount} câu hỏi theo chủ đề "${aiTopic}"!`);
+    }, 800);
+  }
+
   async function handleStudentLookup() {
     if (!lookupExamCode.trim() || !lookupStudentName.trim()) {
       alert("Vui lòng nhập đầy đủ Mã đề thi và Họ và tên học sinh để tra cứu!");
@@ -684,6 +766,7 @@ export default function PhysicsArena() {
             <div className="side-title" style={{ fontSize: "11px", fontWeight: "700", color: "#0d9488", marginBottom: "12px", letterSpacing: "1px" }}>BẢNG ĐIỀU KHIỂN KHTN</div>
             {[
               ["bank", "📚", "Ngân hàng câu hỏi"],
+              ["ai_gen", "🤖", "AI Tạo đề thông minh"],
               ["matrix", "🧩", "Ma trận & tạo đề"],
               ["exam", "📝", "Xem & Sửa đề"],
               ["grading", "✍️", "Chấm bài tự luận"],
@@ -759,6 +842,112 @@ export default function PhysicsArena() {
                 </div>
               </div>
             )}
+            
+            {/* TÍNH NĂNG MỚI: AI TẠO ĐỀ THÔNG MINH */}
+            {tab === "ai_gen" && (
+              <div>
+                <div style={{ marginBottom: "20px" }}>
+                  <h2 style={{ fontSize: "20px", margin: 0, color: "#0f766e" }}>🤖 AI Tạo đề thông minh từ ứng dụng giáo viên</h2>
+                  <p style={{ color: "#64748b", margin: "4px 0 0 0", fontSize: "13px" }}>Hệ thống trợ lý AI sẽ tự động biên soạn câu hỏi chuẩn xác bám sát chương trình KHTN dựa theo chủ đề bạn yêu cầu.</p>
+                </div>
+                <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "10px", border: "1px solid #cbd5e1", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e", display: "block", marginBottom: "6px" }}>Chủ đề / Nội dung bài học:</label>
+                    <input 
+                      type="text" 
+                      value={aiTopic} 
+                      onChange={e => setAiTopic(e.target.value)} 
+                      placeholder="VD: Định luật phản xạ ánh sáng, Tốc độ chuyển động..." 
+                      style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }} 
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e", display: "block", marginBottom: "6px" }}>Khối lớp:</label>
+                    <select 
+                      value={aiGrade} 
+                      onChange={e => setAiGrade(e.target.value)} 
+                      style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", background: "#fff" }}
+                    >
+                      <option value="6">Lớp 6</option>
+                      <option value="7">Lớp 7</option>
+                      <option value="8">Lớp 8</option>
+                      <option value="9">Lớp 9</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e", display: "block", marginBottom: "6px" }}>Dạng câu hỏi muốn tạo:</label>
+                    <select 
+                      value={aiSection} 
+                      onChange={e => setAiSection(e.target.value as Section)} 
+                      style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", background: "#fff" }}
+                    >
+                      <option value="MCQ">Trắc nghiệm nhiều lựa chọn</option>
+                      <option value="TF">Trắc nghiệm Đúng / Sai</option>
+                      <option value="SHORT">Trắc nghiệm trả lời ngắn</option>
+                      <option value="ESSAY">Tự luận</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e", display: "block", marginBottom: "6px" }}>Số lượng câu hỏi:</label>
+                    <input 
+                      type="number" 
+                      min="1" 
+                      max="10" 
+                      value={aiCount} 
+                      onChange={e => setAiCount(Number(e.target.value))} 
+                      style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }} 
+                    />
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: "10px", marginBottom: "24px" }}>
+                  <button 
+                    onClick={handleAIGenerate} 
+                    disabled={isGeneratingAi}
+                    style={{ background: "#0d9488", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "8px", fontWeight: "700", cursor: "pointer", fontSize: "13px" }}
+                  >
+                    {isGeneratingAi ? "⏳ Đang tổng hợp từ AI..." : "✨ Yêu cầu AI soạn câu hỏi"}
+                  </button>
+                  {aiGeneratedQuestions.length > 0 && (
+                    <button 
+                      onClick={() => {
+                        setQuestions(prev => [...aiGeneratedQuestions, ...prev]);
+                        setNotice(`Đã thêm ${aiGeneratedQuestions.length} câu hỏi do AI tạo vào Ngân hàng!`);
+                        setAiGeneratedQuestions([]);
+                      }}
+                      style={{ background: "#059669", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "8px", fontWeight: "700", cursor: "pointer", fontSize: "13px" }}
+                    >
+                      📥 Thêm tất cả vào Ngân hàng câu hỏi
+                    </button>
+                  )}
+                </div>
+
+                {aiGeneratedQuestions.length > 0 && (
+                  <div>
+                    <h3 style={{ fontSize: "15px", color: "#0f766e", marginBottom: "12px" }}>Kết quả AI vừa biên soạn ({aiGeneratedQuestions.length} câu):</h3>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                      {aiGeneratedQuestions.map((q, idx) => (
+                        <div key={q.id} style={{ background: "#fdfefe", border: "1px solid #2dd4bf", padding: "14px", borderRadius: "8px" }}>
+                          <div style={{ fontWeight: "700", color: "#0f766e", marginBottom: "4px", fontSize: "13px" }}>Câu {idx + 1} [{sectionLabel[q.section]}]</div>
+                          <div style={{ fontSize: "13px", color: "#334155", marginBottom: "6px" }}>{q.content}</div>
+                          {q.section === "MCQ" && q.options && (
+                            <div style={{ fontSize: "12px", color: "#64748b", display: "flex", flexDirection: "column", gap: "2px" }}>
+                              {q.options.map(o => <span key={o.key}><b>{o.key}.</b> {o.text} {o.key === q.correctOption ? " (Đúng)" : ""}</span>)}
+                            </div>
+                          )}
+                          {q.section === "TF" && q.subTfs && (
+                            <div style={{ fontSize: "12px", color: "#64748b", display: "flex", flexDirection: "column", gap: "2px" }}>
+                              {q.subTfs.map(s => <span key={s.id}><b>{s.id.toUpperCase()}.</b> {s.content} - Đáp án: <b>{s.key ? "Đúng" : "Sai"}</b></span>)}
+                            </div>
+                          )}
+                          {q.section === "SHORT" && <div style={{ fontSize: "12px", color: "#059669" }}>Đáp án ngắn chuẩn: <b>{q.shortAnswer}</b></div>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {tab === "matrix" && (
               <div>
                 <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
@@ -1513,19 +1702,17 @@ export default function PhysicsArena() {
                     if (reviewFilter === "unanswered") return item.isUnanswered;
                     return true;
                   })
-                  .map((item, index) => (
-                  <div key={index} style={{ padding: "14px", borderRadius: "8px", border: `1px solid ${item.question.section === 'ESSAY' ? '#cbd5e1' : (item.isCorrect ? '#86efac' : '#fca5a5')}`, background: item.question.section === 'ESSAY' ? '#f8fafc' : (item.isCorrect ? '#f0fdf4' : '#fef2f2') }}>
-                    <p style={{ fontWeight: "700", color: "#1e293b", margin: "0 0 6px 0", fontSize: "13px" }}>Câu {index + 1} ({sectionLabel[item.question.section]} - {item.question.points}đ): {item.questionText}</p>
-                    <p style={{ fontSize: "13px", margin: "4px 0" }}>
-                      - Đáp án bạn chọn: <span style={{ fontWeight: "700" }}>{item.studentAnswer}</span>
-                    </p>
-                    {item.question.section !== "ESSAY" && (
-                      <p style={{ fontSize: "13px", margin: "4px 0" }}>
-                        - Đáp án đúng chuẩn: <span style={{ fontWeight: "700", color: "#059669" }}>{item.correctAnswer}</span>
-                      </p>
-                    )}
-                  </div>
-                ))}
+                  .map((item, idx) => (
+                    <div key={idx} style={{ background: "#f8fafc", padding: "14px", borderRadius: "8px", border: "1px solid #cbd5e1" }}>
+                      <div style={{ fontWeight: "700", color: "#0f766e", marginBottom: "4px", fontSize: "13px" }}>
+                        {item.questionText} ({item.question.points}đ)
+                      </div>
+                      <div style={{ fontSize: "13px", color: "#334155" }}>
+                        <div>- Bạn chọn/trả lời: <b>{item.studentAnswer}</b></div>
+                        {item.question.section !== "ESSAY" && <div>- Đáp án chuẩn: <b style={{ color: "#059669" }}>{item.correctAnswer}</b></div>}
+                      </div>
+                    </div>
+                  ))}
               </div>
             </div>
           ))}
