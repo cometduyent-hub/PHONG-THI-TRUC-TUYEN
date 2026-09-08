@@ -242,12 +242,17 @@ export default function PhysicsArena() {
   const [lookupResult, setLookupResult] = useState<Submission | null>(null);
   const [lookupQuestions, setLookupQuestions] = useState<Question[]>([]);
   const [reviewFilter, setReviewFilter] = useState<"all" | "correct" | "incorrect" | "unanswered">("all");
-
   const [viewingSubmission, setViewingSubmission] = useState<Submission | null>(null);
   const [showDrawingModal, setShowDrawingModal] = useState(false);
   const [activeEssayQId, setActiveEssayQId] = useState<string | null>(null);
+  
+  // Canvas drawing state managed via useRef (optimized for high-performance rendering & diagram features)[cite: 4]
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
+  const isDrawingRef = useRef(false);
+  const drawColorRef = useRef("#0f766e");
+  const drawWidthRef = useRef(2);
+  const toolRef = useRef<"pen" | "eraser">("pen");
+
   const essayTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const deadlineRef = useRef<number | null>(null);
   const submitExamRef = useRef<() => void>(() => undefined);
@@ -357,8 +362,6 @@ export default function PhysicsArena() {
       };
     });
   }, [submitted, exam, answers]);
-
-  // Handler for student lookup and review of past submissions
   async function handleStudentLookup() {
     if (!lookupExamCode.trim() || !lookupStudentName.trim()) {
       alert("Vui lòng nhập đầy đủ Mã đề thi và Họ và tên học sinh để tra cứu!");
@@ -368,7 +371,6 @@ export default function PhysicsArena() {
       alert("Chưa cấu hình Supabase kết nối cơ sở dữ liệu.");
       return;
     }
-    // Fetch submission
     const { data: subData, error: subError } = await supabase
       .from("student_submissions")
       .select("*")
@@ -376,7 +378,6 @@ export default function PhysicsArena() {
       .ilike("student_name", `%${lookupStudentName.trim()}%`)
       .order("submitted_at", { ascending: false })
       .limit(1);
-
     if (subError || !subData || subData.length === 0) {
       alert("Không tìm thấy bài nộp phù hợp với thông tin đã nhập!");
       setLookupResult(null);
@@ -384,14 +385,11 @@ export default function PhysicsArena() {
     }
     const foundSub = subData[0] as Submission;
     setLookupResult(foundSub);
-
-    // Fetch exam questions data for this exam code
     const { data: examData, error: examError } = await supabase
       .from("exams")
       .select("questions_data")
       .eq("id", lookupExamCode.trim())
       .single();
-
     if (!examError && examData?.questions_data) {
       setLookupQuestions(examData.questions_data as Question[]);
     } else {
@@ -399,7 +397,6 @@ export default function PhysicsArena() {
     }
     setNotice("Đã tìm thấy thông tin bài làm của học sinh!");
   }
-
   function generateExam() {
     const selected: Question[] = [];
     (Object.keys(matrix) as Section[]).forEach(sec => {
@@ -1076,7 +1073,6 @@ export default function PhysicsArena() {
               🔍 Tra cứu & Xem lại bài làm
             </button>
           </div>
-
           {studentViewTab === "lookup" ? (
             <div>
               <h3 style={{ color: "#0f766e", marginBottom: "8px", fontSize: "18px" }}>Tra cứu kết quả & Xem lại bài làm chi tiết</h3>
@@ -1109,7 +1105,6 @@ export default function PhysicsArena() {
                   Tra cứu ngay
                 </button>
               </div>
-
               {lookupResult && (
                 <div style={{ marginTop: "24px", border: "1px solid #5eead4", background: "#f0fdf4", padding: "20px", borderRadius: "10px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "2px solid #2dd4bf", paddingBottom: "12px", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
@@ -1126,7 +1121,6 @@ export default function PhysicsArena() {
                       </div>
                     </div>
                   </div>
-
                   <div style={{ fontSize: "14px", fontWeight: "800", color: "#0f766e", marginBottom: "12px" }}>Chi tiết các câu hỏi & Đáp án:</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                     {lookupQuestions.map((q, qIdx) => {
@@ -1150,7 +1144,6 @@ export default function PhysicsArena() {
                         stuAnsStr = stuAns || "Không làm";
                         correctAnsStr = "(Chấm tự luận bởi giáo viên)";
                       }
-
                       return (
                         <div key={q.id} style={{ background: "#fff", padding: "14px", borderRadius: "8px", border: `1px solid ${q.section === 'ESSAY' ? '#cbd5e1' : (isCorrect ? '#86efac' : '#fca5a5')}` }}>
                           <div style={{ fontWeight: "700", color: "#0f766e", marginBottom: "6px", fontSize: "13px" }}>
@@ -1219,13 +1212,47 @@ export default function PhysicsArena() {
                       <strong>Bảng vẽ hình / Sơ đồ tư duy</strong>
                       <button onClick={() => setShowDrawingModal(false)} style={{ background: "none", border: "none", fontSize: "18px", cursor: "pointer" }}>✕</button>
                     </div>
+                    <div style={{ display: "flex", gap: "10px", marginBottom: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                      <label style={{ fontSize: "12px", fontWeight: "700" }}>Màu vẽ:</label>
+                      <input 
+                        type="color" 
+                        defaultValue="#0f766e" 
+                        onChange={(e) => { drawColorRef.current = e.target.value; }}
+                        style={{ border: "none", width: "30px", height: "24px", cursor: "pointer", background: "none" }}
+                      />
+                      <label style={{ fontSize: "12px", fontWeight: "700", marginLeft: "6px" }}>Độ dày:</label>
+                      <select 
+                        defaultValue="2" 
+                        onChange={(e) => { drawWidthRef.current = Number(e.target.value); }}
+                        style={{ padding: "2px 6px", borderRadius: "4px", border: "1px solid #cbd5e1", fontSize: "12px" }}
+                      >
+                        <option value="1">Mỏng (1px)</option>
+                        <option value="2">Vừa (2px)</option>
+                        <option value="4">Đậm (4px)</option>
+                        <option value="8">Rất đậm (8px)</option>
+                      </select>
+                      <button 
+                        type="button" 
+                        onClick={() => { toolRef.current = "pen"; }}
+                        style={{ padding: "4px 8px", background: "#f0fdf4", border: "1px solid #5eead4", borderRadius: "4px", fontSize: "12px", fontWeight: "600", cursor: "pointer" }}
+                      >
+                        ✏️ Bút vẽ
+                      </button>
+                      <button 
+                        type="button" 
+                        onClick={() => { toolRef.current = "eraser"; }}
+                        style={{ padding: "4px 8px", background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: "4px", fontSize: "12px", fontWeight: "600", cursor: "pointer" }}
+                      >
+                        🧹 Tẩy
+                      </button>
+                    </div>
                     <canvas 
                       ref={canvasRef}
                       width={480}
                       height={280}
                       style={{ border: "1px solid #cbd5e1", background: "#fdfefe", borderRadius: "6px", cursor: "crosshair", width: "100%" }}
                       onMouseDown={(e) => {
-                        setIsDrawing(true);
+                        isDrawingRef.current = true;
                         const canvas = canvasRef.current;
                         if (!canvas) return;
                         const ctx = canvas.getContext("2d");
@@ -1235,18 +1262,21 @@ export default function PhysicsArena() {
                         ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
                       }}
                       onMouseMove={(e) => {
-                        if (!isDrawing) return;
+                        if (!isDrawingRef.current) return;
                         const canvas = canvasRef.current;
                         if (!canvas) return;
                         const ctx = canvas.getContext("2d");
                         if (!ctx) return;
                         const rect = canvas.getBoundingClientRect();
                         ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
-                        ctx.strokeStyle = "#0f766e";
-                        ctx.lineWidth = 2;
+                        ctx.strokeStyle = toolRef.current === "eraser" ? "#fdfefe" : drawColorRef.current;
+                        ctx.lineWidth = toolRef.current === "eraser" ? 16 : drawWidthRef.current;
+                        ctx.lineCap = "round";
+                        ctx.lineJoin = "round";
                         ctx.stroke();
                       }}
-                      onMouseUp={() => setIsDrawing(false)}
+                      onMouseUp={() => { isDrawingRef.current = false; }}
+                      onMouseLeave={() => { isDrawingRef.current = false; }}
                     />
                     <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
                       <button onClick={() => {
@@ -1449,7 +1479,6 @@ export default function PhysicsArena() {
                   </div>
                 </div>
               </div>
-
               {/* Enhanced Review Filters */}
               <div style={{ display: "flex", gap: "8px", margin: "20px 0", flexWrap: "wrap", alignItems: "center" }}>
                 <span style={{ fontSize: "13px", fontWeight: "700", color: "#0f766e" }}>Lọc kết quả xem lại:</span>
@@ -1475,7 +1504,6 @@ export default function PhysicsArena() {
                   );
                 })}
               </div>
-
               <div style={{ marginTop: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
                 <h3 style={{ fontSize: "16px", fontWeight: "800", color: "#0f766e" }}>Chi tiết bài làm và đáp án:</h3>
                 {submissionDetails
