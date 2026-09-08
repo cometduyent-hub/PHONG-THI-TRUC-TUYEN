@@ -185,16 +185,34 @@ function shuffleExamSections(questionList: Question[]): Question[] {
   ];
 }
 
+// CẬP NHẬT HÀM PARSE ROW: ĐỌC Ý A, B, C, D TỪ CÁC CỘT OPTION A, B, C, D CHO CÂU ĐÚNG/SAI (TF)
 function parseRow(r: Record<string, any>): Question {
   const section = String(r.section || "MCQ").toUpperCase() as Section;
-  const options = ["A", "B", "C", "D"].map(k => ({ key: k, text: String(r[`option${k}`] ?? r[`option_${k.toLowerCase()}`] ?? "") })).filter(x => x.text);
   
-  const subTfs: SubTFItem[] = ["a", "b", "c", "d"].map((id) => ({
-    id,
-    content: String(r[`tf_content_${id}`] || `Nhận định ${id.toUpperCase()}`),
-    key: String(r[`tf_key_${id}`]).toLowerCase() === "true" || r[`tf_key_${id}`] === 1 || r[`tf_key_${id}`] === "1",
-    difficulty: (String(r[`tf_diff_${id}`] || "TH").toUpperCase() as Difficulty)
-  }));
+  const options = section === "MCQ" 
+    ? ["A", "B", "C", "D"].map(k => ({ key: k, text: String(r[`option${k}`] ?? r[`option_${k.toLowerCase()}`] ?? "") })).filter(x => x.text)
+    : undefined;
+
+  const subTfs: SubTFItem[] = ["a", "b", "c", "d"].map((id) => {
+    const upperId = id.toUpperCase();
+    // Lấy nội dung từ optionA, optionB, optionC, optionD hoặc dự phòng sang tf_content_a...
+    const contentText = String(
+      r[`option${upperId}`] || 
+      r[`option_${id}`] || 
+      r[`tf_content_${id}`] || 
+      `Nhận định ${upperId}`
+    );
+    const rawKey = r[`tf_key_${id}`] ?? r[`key_${id}`] ?? r[`tf_key_answer`] ?? true;
+    const keyVal = String(rawKey).toLowerCase() === "true" || rawKey === 1 || rawKey === "1" || String(rawKey).toLowerCase() === "đ" || String(rawKey).toLowerCase() === "đúng";
+    const diffVal = (String(r[`tf_diff_${id}`] || r.difficulty || "TH").toUpperCase() as Difficulty);
+    return {
+      id,
+      content: contentText,
+      key: keyVal,
+      difficulty: diffVal
+    };
+  });
+
   return {
     id: String(r.id || crypto.randomUUID()),
     section,
@@ -206,7 +224,7 @@ function parseRow(r: Record<string, any>): Question {
     videoUrl: String(r.videoUrl || "") || undefined,
     audioUrl: String(r.audioUrl || "") || undefined,
     imageUrl: String(r.imageUrl || "") || undefined,
-    options: options.length ? options : (section === "MCQ" ? [{key:"A",text:"Đáp án A"},{key:"B",text:"Đáp án B"},{key:"C",text:"Đáp án C"},{key:"D",text:"Đáp án D"}] : undefined),
+    options: options?.length ? options : (section === "MCQ" ? [{key:"A",text:"Đáp án A"},{key:"B",text:"Đáp án B"},{key:"C",text:"Đáp án C"},{key:"D",text:"Đáp án D"}] : undefined),
     correctOption: String(r.correctOption || "A"),
     subTfs: section === "TF" ? subTfs : undefined,
     shortAnswer: String(r.shortAnswer ?? "") || undefined,
@@ -248,7 +266,6 @@ export default function PhysicsArena() {
 
   useEffect(() => { answersRef.current = answers; }, [answers]);
   useEffect(() => { examRef.current = exam; }, [exam]);
-  
   useEffect(() => {
     if (mode === "student" && exam.length > 0 && !submitted && !deadlineRef.current) {
       const startSeconds = Math.max(1, seconds || examMinutes * 60);
@@ -256,7 +273,6 @@ export default function PhysicsArena() {
       setSeconds(startSeconds);
     }
   }, [mode, exam.length, submitted]);
-
   useEffect(() => {
     if (mode !== "student" || exam.length === 0 || submitted || !deadlineRef.current) return;
     const tick = () => {
@@ -268,7 +284,6 @@ export default function PhysicsArena() {
     const timer = window.setInterval(tick, 250);
     return () => window.clearInterval(timer);
   }, [mode, exam.length, submitted]);
-
   useEffect(() => {
     if (mode !== "student" || exam.length === 0 || submitted) return;
     const onVisibility = () => {
@@ -280,7 +295,6 @@ export default function PhysicsArena() {
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [mode, exam.length, submitted]);
-
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const examId = params.get("exam");
@@ -379,6 +393,7 @@ export default function PhysicsArena() {
     setMatrix(m => ({ ...m, [sec]: { ...m[sec], [d]: Math.max(0, Math.floor(value || 0)) } }));
   }
 
+  // CẬP NHẬT FILE MẪU EXCEL: ĐƯA NỘI DUNG Ý A, B, C, D CỦA CÂU ĐÚNG/SAI VÀO CÁC CỘT OPTION A, B, C, D TƯƠNG ỨNG
   function downloadExcelTemplate() {
     const templateData = [
       {
@@ -397,10 +412,52 @@ export default function PhysicsArena() {
         points: 0.25,
         shortAnswer: "",
         tolerance: 0,
-        tf_content_a: "", tf_key_a: "", tf_diff_a: "",
-        tf_content_b: "", tf_key_b: "", tf_diff_b: "",
-        tf_content_c: "", tf_key_c: "", tf_diff_c: "",
-        tf_content_d: "", tf_key_d: "", tf_diff_d: "",
+        imageUrl: "", videoUrl: "", audioUrl: ""
+      },
+      {
+        id: "KHTN_TF_01",
+        section: "TF",
+        subject: "Khoa học tự nhiên",
+        grade: "7",
+        topic: "Ánh sáng",
+        difficulty: "TH",
+        content: "Các nhận định về hiện tượng phản xạ ánh sáng:",
+        optionA: "Tia phản xạ nằm trong mặt phẳng chứa tia tới và pháp tuyến.",
+        optionB: "Góc phản xạ luôn lớn hơn góc tới.",
+        optionC: "Góc phản xạ bằng góc tới.",
+        optionD: "Khi thay đổi góc tới thì góc phản xạ không đổi.",
+        correctOption: "",
+        points: 1.0, 
+        shortAnswer: "", 
+        tolerance: 0,
+        tf_key_a: "TRUE", tf_diff_a: "NB",
+        tf_key_b: "FALSE", tf_diff_b: "TH",
+        tf_key_c: "TRUE", tf_diff_c: "NB",
+        tf_key_d: "FALSE", tf_diff_d: "VD",
+        imageUrl: "", videoUrl: "", audioUrl: ""
+      },
+      {
+        id: "KHTN_SHORT_01",
+        section: "SHORT",
+        subject: "Khoa học tự nhiên",
+        grade: "7",
+        topic: "Âm thanh",
+        difficulty: "VD",
+        content: "Một nguồn âm dao động thực hiện 600 dao động trong 20 giây. Tần số dao động là (Hz):",
+        optionA: "", optionB: "", optionC: "", optionD: "", correctOption: "",
+        points: 0.5, shortAnswer: "30", tolerance: 0.1,
+        imageUrl: "", videoUrl: "", audioUrl: ""
+      },
+      {
+        id: "KHTN_ESSAY_01",
+        section: "ESSAY",
+        subject: "Khoa học tự nhiên",
+        grade: "7",
+        topic: "Trao đổi chất",
+        difficulty: "VD",
+        content: "Giải thích vai trò của quá trình quang hợp đối với sự sống trên Trái Đất?",
+        optionA: "", optionB: "", optionC: "", optionD: "", correctOption: "",
+        points: 2.0, shortAnswer: "", tolerance: 0,
         imageUrl: "", videoUrl: "", audioUrl: ""
       }
     ];
@@ -504,25 +561,6 @@ export default function PhysicsArena() {
     setSubmissions((data || []) as Submission[]);
   }
 
-  async function saveTeacherGrading(subId: string) {
-    if (!supabase) return;
-    const sub = submissions.find(s => s.id === subId);
-    if (!sub) return;
-    const currentEssayScore = essayScores[subId] ?? sub.essay_score ?? 0;
-    const newFinal = (sub.auto_score || 0) + currentEssayScore;
-
-    const { error } = await supabase.from("student_submissions")
-      .update({ essay_score: currentEssayScore, final_score: newFinal })
-      .eq("id", subId);
-
-    if (error) {
-      alert("Lỗi khi lưu điểm tự luận: " + error.message);
-    } else {
-      setSubmissions(prev => prev.map(s => s.id === subId ? { ...s, essay_score: currentEssayScore, final_score: newFinal } : s));
-      alert("Đã lưu điểm tự luận thành công!");
-    }
-  }
-
   function exportSubmissionsExcel() {
     if (!submissions.length) { setNotice("Chưa có kết quả để xuất Excel."); return; }
     const rows = submissions.map((s, i) => ({
@@ -579,7 +617,6 @@ export default function PhysicsArena() {
         </div>
       </header>
       {notice && <div className="notice" style={{ background: "#f0fdf4", border: "1px solid #5eead4", padding: "12px 24px", margin: "20px 28px", borderRadius: "10px", color: "#115e59", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 2px 4px rgba(0,0,0,0.02)" }}><span>{notice}</span><button onClick={() => setNotice("")} style={{ background: "none", border: "none", cursor: "pointer", fontWeight: "bold", fontSize: "16px", color: "#0f766e" }}>×</button></div>}
-      
       {mode === "teacher" ? (
         <section className="workspace" style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: "24px", padding: "0 28px", marginTop: "24px" }}>
           <aside className="sidebar" style={{ background: "#ffffff", padding: "18px", borderRadius: "14px", border: "1px solid #cbd5e1", height: "fit-content", boxShadow: "0 4px 12px -2px rgba(0, 0, 0, 0.05)" }}>
@@ -661,7 +698,6 @@ export default function PhysicsArena() {
                 </div>
               </div>
             )}
-
             {tab === "matrix" && (
               <div>
                 <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
@@ -694,7 +730,6 @@ export default function PhysicsArena() {
                 ))}
               </div>
             )}
-
             {tab === "exam" && (
               <div>
                 <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
@@ -748,7 +783,6 @@ export default function PhysicsArena() {
                             {q.audioUrl && <span style={{ fontSize: "10px", color: "#059669", display: "block", marginTop: "2px" }}>✓ Đã có audio</span>}
                           </div>
                         </div>
-
                         {q.section === "SHORT" && (
                           <div style={{ marginTop: "10px", background: "#f8fafc", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", display: "flex", gap: "10px", alignItems: "center" }}>
                             <span style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e" }}>Đáp án chuẩn:</span>
@@ -763,7 +797,6 @@ export default function PhysicsArena() {
                             />
                           </div>
                         )}
-
                         {q.section === "TF" && q.subTfs && (
                           <div style={{ marginTop: "12px", background: "#f8fafc", padding: "12px", borderRadius: "8px", border: "1px solid #cbd5e1" }}>
                             <div style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e", marginBottom: "8px" }}>Cấu hình 4 ý (a, b, c, d) & Mức độ nhận thức:</div>
@@ -821,14 +854,11 @@ export default function PhysicsArena() {
                 )}
               </div>
             )}
-
             {tab === "grading" && (
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <div>
-                    <h2 style={{ fontSize: "20px", color: "#0f766e", marginBottom: "6px" }}>Chấm bài & Kết quả</h2>
-                    <p style={{ color: "#64748b", fontSize: "13px" }}>Tải kết quả từ Supabase, chấm điểm tự luận, xem lại bài làm chi tiết và xuất Excel.</p>
-                  </div>
+                  <div><h2 style={{ fontSize: "20px", color: "#0f766e", marginBottom: "6px" }}>Chấm bài & Kết quả</h2>
+                  <p style={{ color: "#64748b", fontSize: "13px" }}>Tải kết quả từ Supabase, chấm tự luận, xem lại bài làm chi tiết và xuất Excel.</p></div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <button onClick={loadSubmissions} style={{ padding: "9px 12px", borderRadius: 8, border: "1px solid #5eead4", background: "#f0fdf4", cursor: "pointer", fontWeight: "600", color: "#0f766e" }}>🔄 Tải kết quả</button>
                     <button onClick={exportSubmissionsExcel} style={{ padding: "9px 12px", borderRadius: 8, border: "none", background: "#0284c7", color: "#fff", cursor: "pointer", fontWeight: "600" }}>📊 Xuất Excel</button>
@@ -854,22 +884,7 @@ export default function PhysicsArena() {
                             <td style={{ padding: 9, border: "1px solid #cbd5e1" }}><b>{s.student_name}</b></td>
                             <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{s.student_class}</td>
                             <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{Number(s.auto_score || 0).toFixed(2)}</td>
-                            <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>
-                              <input 
-                                type="number" 
-                                step="0.25"
-                                min="0"
-                                value={essayScores[s.id!] ?? s.essay_score ?? 0}
-                                onChange={e => {
-                                  const val = Number(e.target.value);
-                                  if (s.id) setEssayScores(prev => ({ ...prev, [s.id!]: val }));
-                                }}
-                                style={{ width: "60px", padding: "4px", border: "1px solid #cbd5e1", borderRadius: "4px" }}
-                              />
-                              {s.id && (
-                                <button onClick={() => saveTeacherGrading(s.id!)} style={{ marginLeft: "4px", background: "#0d9488", color: "#fff", border: "none", padding: "4px 8px", borderRadius: "4px", cursor: "pointer", fontSize: "11px" }}>Lưu</button>
-                              )}
-                            </td>
+                            <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{Number(s.essay_score || 0).toFixed(2)}</td>
                             <td style={{ padding: 9, border: "1px solid #cbd5e1", fontWeight: 800, color: "#0f766e" }}>{Number(s.final_score ?? s.auto_score ?? 0).toFixed(2)}</td>
                             <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{new Date(s.submitted_at).toLocaleString("vi-VN")}</td>
                             <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>
@@ -886,7 +901,6 @@ export default function PhysicsArena() {
                     </table>
                   </div>
                 )}
-
                 {viewingSubmission && (
                   <div style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
                     <div style={{ background: "#fff", padding: "24px", borderRadius: "12px", width: "750px", maxWidth: "95%", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)" }}>
@@ -956,48 +970,10 @@ export default function PhysicsArena() {
                 )}
               </div>
             )}
-
             {tab === "stats" && (
               <div>
                 <h2 style={{ fontSize: "20px", color: "#0f766e", marginBottom: "10px" }}>Thống kê phổ điểm</h2>
-                <p style={{ color: "#64748b", fontSize: "13px", marginBottom: "20px" }}>Phân tích kết quả làm bài và phổ điểm của toàn bộ học sinh đã nộp bài.</p>
-                
-                {submissions.length === 0 ? (
-                  <div style={{ background: "#f8fafc", padding: "30px", textAlign: "center", borderRadius: "8px", border: "1px solid #cbd5e1", color: "#64748b" }}>
-                    Chưa có dữ liệu bài nộp nào. Hãy sang tab "Chấm bài tự luận" và bấm nút "Tải kết quả" để cập nhật dữ liệu từ hệ thống.
-                  </div>
-                ) : (
-                  <div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "15px", marginBottom: "20px" }}>
-                      <div style={{ background: "#f0fdf4", padding: "16px", borderRadius: "8px", border: "1px solid #5eead4" }}>
-                        <div style={{ fontSize: "12px", color: "#047857", fontWeight: "600" }}>Tổng số bài nộp</div>
-                        <div style={{ fontSize: "24px", fontWeight: "800", color: "#0f766e", marginTop: "4px" }}>{submissions.length}</div>
-                      </div>
-                      <div style={{ background: "#eff6ff", padding: "16px", borderRadius: "8px", border: "1px solid #93c5fd" }}>
-                        <div style={{ fontSize: "12px", color: "#1d4ed8", fontWeight: "600" }}>Điểm trung bình</div>
-                        <div style={{ fontSize: "24px", fontWeight: "800", color: "#1e40af", marginTop: "4px" }}>
-                          {(submissions.reduce((acc, s) => acc + (s.final_score ?? s.auto_score ?? 0), 0) / submissions.length).toFixed(2)}
-                        </div>
-                      </div>
-                      <div style={{ background: "#faf5ff", padding: "16px", borderRadius: "8px", border: "1px solid #d8b4fe" }}>
-                        <div style={{ fontSize: "12px", color: "#7e22ce", fontWeight: "600" }}>Điểm cao nhất</div>
-                        <div style={{ fontSize: "24px", fontWeight: "800", color: "#6b21a8", marginTop: "4px" }}>
-                          {Math.max(...submissions.map(s => s.final_score ?? s.auto_score ?? 0)).toFixed(2)}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "8px", border: "1px solid #cbd5e1" }}>
-                      <h3 style={{ fontSize: "15px", color: "#0f766e", marginBottom: "12px" }}>Phân loại kết quả học sinh:</h3>
-                      <ul style={{ margin: 0, paddingLeft: "20px", fontSize: "13px", lineHeight: "1.8", color: "#334155" }}>
-                        <li>Điểm giỏi (≥ 8.0đ): <b>{submissions.filter(s => (s.final_score ?? s.auto_score ?? 0) >= 8).length}</b> học sinh</li>
-                        <li>Điểm khá (6.0 - 7.9đ): <b>{submissions.filter(s => { const sc = s.final_score ?? s.auto_score ?? 0; return sc >= 6 && sc < 8; }).length}</b> học sinh</li>
-                        <li>Điểm trung bình (4.0 - 5.9đ): <b>{submissions.filter(s => { const sc = s.final_score ?? s.auto_score ?? 0; return sc >= 4 && sc < 6; }).length}</b> học sinh</li>
-                        <li>Điểm yếu / kém (&lt; 4.0đ): <b>{submissions.filter(s => (s.final_score ?? s.auto_score ?? 0) < 4).length}</b> học sinh</li>
-                      </ul>
-                    </div>
-                  </div>
-                )}
+                <p style={{ color: "#64748b", fontSize: "13px" }}>Phân tích kết quả làm bài của toàn bộ học sinh.</p>
               </div>
             )}
           </div>
@@ -1018,13 +994,11 @@ export default function PhysicsArena() {
                   </div>
                 </div>
               </div>
-
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginBottom: "20px" }}>
                 <input type="text" placeholder="Họ và tên học sinh" value={studentName} onChange={e => setStudentName(e.target.value)} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
                 <input type="text" placeholder="Lớp (Ví dụ: 7A)" value={studentClass} onChange={e => setStudentClass(e.target.value)} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
                 <input type="text" placeholder="Trường học" value={studentSchool} onChange={e => setStudentSchool(e.target.value)} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
               </div>
-
               {exam.length > 0 && (
                 <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "10px", border: "1px solid #cbd5e1", marginBottom: "20px" }}>
                   <div style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e", marginBottom: "8px" }}>Danh sách câu hỏi (Xanh: Đã làm · Trắng: Chưa làm):</div>
@@ -1050,7 +1024,6 @@ export default function PhysicsArena() {
                   </div>
                 </div>
               )}
-
               {showDrawingModal && (
                 <div style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", background: "rgba(0,0,0,0.5)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <div style={{ background: "#fff", padding: "20px", borderRadius: "12px", width: "520px", maxWidth: "95%" }}>
@@ -1108,7 +1081,6 @@ export default function PhysicsArena() {
                   </div>
                 </div>
               )}
-
               {exam.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "40px", color: "#64748b" }}>Chưa có đề thi nào được tải. Vui lòng kiểm tra lại đường link hoặc yêu cầu giáo viên cung cấp đề.</div>
               ) : (
@@ -1124,7 +1096,6 @@ export default function PhysicsArena() {
                       {q.imageUrl && <img src={q.imageUrl} alt="minh họa" style={{ maxWidth: "100%", maxHeight: "220px", borderRadius: "6px", marginBottom: "10px" }} />}
                       {q.videoUrl && <video src={q.videoUrl} controls style={{ width: "100%", maxHeight: "240px", borderRadius: "6px", marginBottom: "10px" }} />}
                       {q.audioUrl && <audio src={q.audioUrl} controls style={{ width: "100%", marginBottom: "10px" }} />}
-                      
                       {q.section === "MCQ" && q.options && (
                         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                           {q.options.map(opt => (
@@ -1140,7 +1111,6 @@ export default function PhysicsArena() {
                           ))}
                         </div>
                       )}
-
                       {q.section === "TF" && q.subTfs && (
                         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                           {q.subTfs.map(sub => (
@@ -1168,7 +1138,6 @@ export default function PhysicsArena() {
                           ))}
                         </div>
                       )}
-
                       {q.section === "SHORT" && (
                         <div style={{ marginTop: "8px" }}>
                           <input 
@@ -1180,7 +1149,6 @@ export default function PhysicsArena() {
                           />
                         </div>
                       )}
-
                       {q.section === "ESSAY" && (
                         <div style={{ marginTop: "8px" }}>
                           <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginBottom: "6px", background: "#edf2f7", padding: "6px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
