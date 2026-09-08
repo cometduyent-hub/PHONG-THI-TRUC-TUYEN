@@ -220,7 +220,7 @@ export default function PhysicsArena() {
   const [matrix, setMatrix] = useState<Matrix>(defaultMatrix);
   const [examMinutes, setExamMinutes] = useState<number>(45); 
   const [exam, setExam] = useState<Question[]>([]);
-  const [examCodeId, setExamCodeId] = useState<string>("");
+  const [examCodeId, setExamCodeId] = useState<string>("KHTN_" + Math.random().toString(36).substring(2, 10).toUpperCase());
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const answersRef = useRef<Record<string, any>>({});
   const examRef = useRef<Question[]>([]);
@@ -383,10 +383,12 @@ export default function PhysicsArena() {
       alert("Chưa có đề thi nào được tạo! Thầy hãy bấm 'Tạo đề thi' trước.");
       return;
     }
-    const examCode = "KHTN_" + crypto.randomUUID().split("-").join("").substring(0, 8).toUpperCase();
-    setExamCodeId(examCode);
-    const { error } = await supabase.from('exams').insert([{ 
-      id: examCode, 
+    if (!examCodeId.trim()) {
+      alert("Vui lòng nhập mã đề thi hợp lệ!");
+      return;
+    }
+    const { error } = await supabase.from('exams').upsert([{ 
+      id: examCodeId.trim(), 
       title: "Kiểm tra Khoa học tự nhiên", 
       duration: examMinutes,
       questions_data: exam 
@@ -394,8 +396,8 @@ export default function PhysicsArena() {
     if (error) {
       alert("Lỗi khi lưu đề lên hệ thống: " + error.message);
     } else {
-      const shareLink = `${window.location.origin}/?exam=${examCode}`;
-      prompt("Đã xuất link thành công! Thầy hãy copy đường link sau gửi cho học sinh:", shareLink);
+      const shareLink = `${window.location.origin}/?exam=${examCodeId.trim()}`;
+      prompt(`Đã lưu và xuất link thành công cho mã đề [${examCodeId.trim()}]! Thầy hãy copy đường link sau gửi cho học sinh:`, shareLink);
     }
   }
   function updateMatrix(sec: Section, d: Difficulty, value: number) {
@@ -521,6 +523,10 @@ export default function PhysicsArena() {
   }
   async function submitExam() {
     if (submitted) return;
+    if (!studentName.trim()) {
+      alert("Vui lòng điền họ và tên học sinh trước khi nộp bài!");
+      return;
+    }
     const currentAnswers = answersRef.current;
     const currentExam = examRef.current;
     const score = currentExam.reduce((sum, q) => sum + getQuestionAutoScore(q, currentAnswers[q.id]), 0);
@@ -532,7 +538,7 @@ export default function PhysicsArena() {
       return;
     }
     const { error } = await supabase.from("student_submissions").insert([{
-      exam_id: examCodeId || "LOCAL_TEST",
+      exam_id: examCodeId.trim() || "LOCAL_TEST",
       student_name: studentName.trim(),
       student_class: studentClass.trim(),
       student_school: studentSchool.trim(),
@@ -557,7 +563,7 @@ export default function PhysicsArena() {
     }
     const { data, error } = await supabase.from("student_submissions")
       .select("id, exam_id, student_name, student_class, student_school, auto_score, essay_score, final_score, answers_data, submitted_at")
-      .eq("exam_id", examCodeId)
+      .eq("exam_id", examCodeId.trim())
       .order("submitted_at", { ascending: false });
     if (error) { setNotice("Không tải được kết quả: " + error.message); return; }
     setSubmissions((data || []) as Submission[]);
@@ -572,7 +578,7 @@ export default function PhysicsArena() {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(rows);
     XLSX.utils.book_append_sheet(wb, ws, "Kết quả");
-    XLSX.writeFile(wb, `Ket_qua_${examCodeId || "KHTN"}.xlsx`);
+    XLSX.writeFile(wb, `Ket_qua_${examCodeId.trim() || "KHTN"}.xlsx`);
   }
   return (
     <main className="app-shell" style={{ 
@@ -701,8 +707,18 @@ export default function PhysicsArena() {
             {tab === "matrix" && (
               <div>
                 <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
-                  <div><h2 style={{ fontSize: "20px", margin: 0, color: "#0f766e" }}>Ma trận & Tạo đề</h2><p style={{ color: "#64748b", margin: 0, fontSize: "13px" }}>Cấu hình số lượng câu hỏi, phân mức độ nhận thức và chọn thời gian bài thi.</p></div>
+                  <div><h2 style={{ fontSize: "20px", margin: 0, color: "#0f766e" }}>Ma trận & Tạo đề</h2><p style={{ color: "#64748b", margin: 0, fontSize: "13px" }}>Cấu hình số lượng câu hỏi, phân mức độ nhận thức, mã đề và thời gian bài thi.</p></div>
                   <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "#f0fdf4", padding: "6px 12px", borderRadius: "8px", border: "1px solid #5eead4" }}>
+                      <span style={{ fontSize: "13px", fontWeight: "700", color: "#0f766e" }}>🏷️ Mã đề:</span>
+                      <input 
+                        type="text" 
+                        value={examCodeId} 
+                        onChange={e => setExamCodeId(e.target.value)} 
+                        placeholder="Nhập mã đề (VD: DE_01)" 
+                        style={{ padding: "4px 8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontWeight: "600", width: "130px" }} 
+                      />
+                    </div>
                     <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "#f0fdf4", padding: "6px 12px", borderRadius: "8px", border: "1px solid #5eead4" }}>
                       <span style={{ fontSize: "13px", fontWeight: "700", color: "#0f766e" }}>⏱️ Thời gian:</span>
                       <select value={examMinutes} onChange={e => setExamMinutes(Number(e.target.value))} style={{ padding: "4px 8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontWeight: "600" }}>
@@ -733,7 +749,7 @@ export default function PhysicsArena() {
             {tab === "exam" && (
               <div>
                 <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-                  <div><h2 style={{ fontSize: "20px", margin: 0, color: "#0f766e" }}>Xem & Chỉnh sửa đề thi hiện tại</h2><p style={{ color: "#64748b", margin: 0, fontSize: "13px" }}>Quản lý thang điểm, nội dung, Media và cấu hình mức độ từng ý Đúng/Sai.</p></div>
+                  <div><h2 style={{ fontSize: "20px", margin: 0, color: "#0f766e" }}>Xem & Chỉnh sửa đề thi hiện tại ({examCodeId})</h2><p style={{ color: "#64748b", margin: 0, fontSize: "13px" }}>Quản lý thang điểm, nội dung, Media và cấu hình mức độ từng ý Đúng/Sai.</p></div>
                   <button onClick={generateExam} style={{ background: "#f0fdf4", border: "1px solid #5eead4", padding: "8px 14px", borderRadius: "8px", cursor: "pointer", fontWeight: "600", color: "#0f766e" }}>🔄 Tạo đề mới</button>
                 </div>
                 {exam.length === 0 ? <div style={{ textAlign: "center", padding: "30px", color: "#64748b" }}>Chưa có đề. Vui lòng vào Ma trận & tạo đề.</div> : (
@@ -859,13 +875,20 @@ export default function PhysicsArena() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <div><h2 style={{ fontSize: "20px", color: "#0f766e", marginBottom: "6px" }}>Chấm bài & Kết quả</h2>
                   <p style={{ color: "#64748b", fontSize: "13px" }}>Tải kết quả từ Supabase, chấm tự luận, xem lại bài làm chi tiết và xuất Excel.</p></div>
-                  <div style={{ display: "flex", gap: 8 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <input 
+                      type="text" 
+                      value={examCodeId} 
+                      onChange={e => setExamCodeId(e.target.value)} 
+                      placeholder="Mã đề cần xem" 
+                      style={{ padding: "8px", borderRadius: 8, border: "1px solid #cbd5e1", width: "130px", fontSize: "13px", fontWeight: "600" }} 
+                    />
                     <button onClick={loadSubmissions} style={{ padding: "9px 12px", borderRadius: 8, border: "1px solid #5eead4", background: "#f0fdf4", cursor: "pointer", fontWeight: "600", color: "#0f766e" }}>🔄 Tải kết quả</button>
                     <button onClick={exportSubmissionsExcel} style={{ padding: "9px 12px", borderRadius: 8, border: "none", background: "#0284c7", color: "#fff", cursor: "pointer", fontWeight: "600" }}>📊 Xuất Excel</button>
                   </div>
                 </div>
                 <div style={{ marginTop: 18, background: "#f8fafc", padding: 16, borderRadius: 8, border: "1px solid #cbd5e1" }}>
-                  <b>Đề hiện tại: {examCodeId || "chưa xuất mã"}</b> · Tổng số bài đã nộp: <b>{submissions.length}</b>
+                  <b>Đề hiện tại: {examCodeId}</b> · Tổng số bài đã nộp: <b>{submissions.length}</b>
                 </div>
                 {submissions.length > 0 && (
                   <div style={{ overflowX: "auto", marginTop: 16 }}>
@@ -984,7 +1007,7 @@ export default function PhysicsArena() {
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "2px solid #0d9488", paddingBottom: "15px", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
                 <div>
-                  <h2 style={{ margin: 0, color: "#0f766e", fontSize: "20px" }}>Bài kiểm tra Khoa học tự nhiên</h2>
+                  <h2 style={{ margin: 0, color: "#0f766e", fontSize: "20px" }}>Bài kiểm tra Khoa học tự nhiên ({examCodeId})</h2>
                   <p style={{ margin: "4px 0 0 0", fontSize: "13px", color: "#64748b" }}>Điền thông tin và hoàn thành đầy đủ các phần câu hỏi bên dưới.</p>
                 </div>
                 <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
@@ -995,7 +1018,7 @@ export default function PhysicsArena() {
                 </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginBottom: "20px" }}>
-                <input type="text" placeholder="Họ và tên học sinh" value={studentName} onChange={e => setStudentName(e.target.value)} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
+                <input type="text" placeholder="Họ và tên học sinh (*)" value={studentName} onChange={e => setStudentName(e.target.value)} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
                 <input type="text" placeholder="Lớp (Ví dụ: 7A)" value={studentClass} onChange={e => setStudentClass(e.target.value)} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
                 <input type="text" placeholder="Trường học" value={studentSchool} onChange={e => setStudentSchool(e.target.value)} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
               </div>
@@ -1249,7 +1272,7 @@ export default function PhysicsArena() {
             <div style={{ padding: "10px 0" }}>
               <div style={{ textAlign: "center", padding: "10px 10px 22px" }}>
                 <h2 style={{ color: "#0f766e", marginBottom: "6px" }}>🎉 Hoàn thành bài thi!</h2>
-                <p style={{ color: "#64748b", marginTop: 0 }}>Học sinh có thể xem lại điểm số và toàn bộ bài làm của mình dưới đây.</p>
+                <p style={{ color: "#64748b", marginTop: 0 }}>Học sinh có thể xem lại điểm số và toàn bộ bài làm chi tiết của mình dưới đây.</p>
                 <div style={{ display: "flex", justifyContent: "center", gap: "12px", flexWrap: "wrap", marginTop: "14px" }}>
                   <div style={{ background: "#f0fdf4", border: "1px solid #5eead4", padding: "14px 20px", borderRadius: "10px", minWidth: "190px" }}>
                     <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>ĐIỂM TRẮC NGHIỆM</div>
@@ -1261,16 +1284,16 @@ export default function PhysicsArena() {
                   </div>
                 </div>
               </div>
-              <div className="mt-6 space-y-4 text-left">
-                <h3 className="text-lg font-bold text-gray-700">Chi tiết bài làm của bạn:</h3>
-                {submissionDetails && submissionDetails.map((item, index) => (
-                  <div key={index} className={`p-4 rounded-lg border ${item.isCorrect ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                    <p className="font-medium text-gray-800">Câu {index + 1}: {item.questionText}</p>
-                    <p className="text-sm mt-1">
-                      - Đáp án bạn chọn: <span className="font-semibold">{item.studentAnswer}</span>
+              <div style={{ marginTop: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
+                <h3 style={{ fontSize: "16px", fontWeight: "800", color: "#0f766e" }}>Chi tiết bài làm và đáp án:</h3>
+                {submissionDetails.map((item, index) => (
+                  <div key={index} style={{ padding: "14px", borderRadius: "8px", border: `1px solid ${item.isCorrect ? '#86efac' : '#fca5a5'}`, background: item.isCorrect ? '#f0fdf4' : '#fef2f2' }}>
+                    <p style={{ fontWeight: "700", color: "#1e293b", margin: "0 0 6px 0", fontSize: "13px" }}>Câu {index + 1}: {item.questionText}</p>
+                    <p style={{ fontSize: "13px", margin: "4px 0" }}>
+                      - Đáp án bạn chọn: <span style={{ fontWeight: "700" }}>{item.studentAnswer}</span>
                     </p>
-                    <p className="text-sm">
-                      - Đáp án đúng: <span className="font-semibold text-green-600">{item.correctAnswer}</span>
+                    <p style={{ fontSize: "13px", margin: "4px 0" }}>
+                      - Đáp án đúng chuẩn: <span style={{ fontWeight: "700", color: "#059669" }}>{item.correctAnswer}</span>
                     </p>
                   </div>
                 ))}
