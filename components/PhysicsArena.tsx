@@ -2,21 +2,17 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
-
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || "";
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() || "";
 const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
-
 type Section = "MCQ" | "TF" | "SHORT" | "ESSAY";
 type Difficulty = "NB" | "TH" | "VD" | "VDC";
-
 type SubTFItem = {
   id: string;
   content: string;
   key: boolean;
   difficulty: Difficulty;
 };
-
 type Question = {
   id: string;
   section: Section;
@@ -35,14 +31,12 @@ type Question = {
   tolerance?: number;
   points: number;
 };
-
 type Matrix = {
   MCQ: Record<Difficulty, number>;
   TF: Record<Difficulty, number>;
   SHORT: Record<Difficulty, number>;
   ESSAY: Record<Difficulty, number>;
 };
-
 type Submission = {
   id?: string;
   exam_id: string;
@@ -55,7 +49,6 @@ type Submission = {
   answers_data: Record<string, any>;
   submitted_at: string;
 };
-
 function scoreTF(userAns: Record<string, boolean> | undefined, subTfs: SubTFItem[] | undefined, totalPoint: number): number {
   if (!subTfs || !userAns) return 0;
   let wrongCount = 0;
@@ -72,7 +65,6 @@ function scoreTF(userAns: Record<string, boolean> | undefined, subTfs: SubTFItem
   else if (wrongCount >= 4) deduction = totalPoint;
   return Math.max(0, totalPoint - deduction);
 }
-
 function getQuestionAutoScore(q: Question, answer: any): number {
   if (q.section === "MCQ") return answer === q.correctOption ? q.points : 0;
   if (q.section === "TF") return scoreTF(answer, q.subTfs, q.points);
@@ -85,7 +77,6 @@ function getQuestionAutoScore(q: Question, answer: any): number {
   }
   return 0;
 }
-
 const seed: Question[] = [
   { 
     id: "KHTN001", 
@@ -138,23 +129,19 @@ const seed: Question[] = [
     points: 2.0 
   }
 ];
-
 const defaultMatrix: Matrix = {
   MCQ: { NB: 1, TH: 1, VD: 0, VDC: 0 },
   TF: { NB: 0, TH: 1, VD: 0, VDC: 0 },
   SHORT: { NB: 0, TH: 1, VD: 0, VDC: 0 },
   ESSAY: { NB: 0, TH: 0, VD: 1, VDC: 0 }
 };
-
 const sectionLabel: Record<Section, string> = { 
   MCQ: "Phần I: Trắc nghiệm nhiều lựa chọn", 
   TF: "Phần II: Trắc nghiệm đúng / sai", 
   SHORT: "Phần III: Trắc nghiệm trả lời ngắn", 
   ESSAY: "Phần IV: Tự luận" 
 };
-
 const diffLabel: Record<Difficulty, string> = { NB: "Nhận biết", TH: "Thông hiểu", VD: "Vận dụng", VDC: "Vận dụng cao" };
-
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -163,7 +150,6 @@ function shuffle<T>(arr: T[]): T[] {
   }
   return a;
 }
-
 function shuffleExamSections(questionList: Question[]): Question[] {
   const mcq = questionList.filter(q => q.section === "MCQ");
   const tf = questionList.filter(q => q.section === "TF");
@@ -184,18 +170,14 @@ function shuffleExamSections(questionList: Question[]): Question[] {
     ...shuffleArray(essay)
   ];
 }
-
-// CẬP NHẬT HÀM PARSE ROW: ĐỌC Ý A, B, C, D TỪ CÁC CỘT OPTION A, B, C, D CHO CÂU ĐÚNG/SAI (TF)
 function parseRow(r: Record<string, any>): Question {
   const section = String(r.section || "MCQ").toUpperCase() as Section;
   
   const options = section === "MCQ" 
     ? ["A", "B", "C", "D"].map(k => ({ key: k, text: String(r[`option${k}`] ?? r[`option_${k.toLowerCase()}`] ?? "") })).filter(x => x.text)
     : undefined;
-
   const subTfs: SubTFItem[] = ["a", "b", "c", "d"].map((id) => {
     const upperId = id.toUpperCase();
-    // Lấy nội dung từ optionA, optionB, optionC, optionD hoặc dự phòng sang tf_content_a...
     const contentText = String(
       r[`option${upperId}`] || 
       r[`option_${id}`] || 
@@ -212,7 +194,6 @@ function parseRow(r: Record<string, any>): Question {
       difficulty: diffVal
     };
   });
-
   return {
     id: String(r.id || crypto.randomUUID()),
     section,
@@ -232,7 +213,6 @@ function parseRow(r: Record<string, any>): Question {
     points: Number(r.points || (section === "MCQ" ? 0.25 : section === "TF" ? 1.0 : section === "SHORT" ? 0.5 : 2.0))
   };
 }
-
 export default function PhysicsArena() {
   const [mode, setMode] = useState<"teacher" | "student">("teacher");
   const [tab, setTab] = useState<"bank" | "matrix" | "exam" | "grading" | "stats">("bank");
@@ -263,7 +243,6 @@ export default function PhysicsArena() {
   const essayTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const deadlineRef = useRef<number | null>(null);
   const submitExamRef = useRef<() => void>(() => undefined);
-
   useEffect(() => { answersRef.current = answers; }, [answers]);
   useEffect(() => { examRef.current = exam; }, [exam]);
   useEffect(() => {
@@ -326,10 +305,46 @@ export default function PhysicsArena() {
       fetchExamFromCloud();
     }
   }, []);
-
   const autoScore = useMemo(() => exam.reduce((sum, q) => sum + getQuestionAutoScore(q, answers[q.id]), 0), [exam, answers]);
   const essayTotalScore = Object.values(essayScores).reduce((a, b) => a + b, 0);
   const finalScore = autoScore + essayTotalScore;
+
+  const submissionDetails = useMemo(() => {
+    if (!submitted) return [];
+    return exam.map(q => {
+      const ans = answers[q.id];
+      let studentAnswerStr = "";
+      let correctAnswerStr = "";
+      let isCorrect = false;
+
+      if (q.section === "MCQ") {
+        studentAnswerStr = ans || "Chưa chọn";
+        correctAnswerStr = q.correctOption || "";
+        isCorrect = ans === q.correctOption;
+      } else if (q.section === "TF") {
+        studentAnswerStr = q.subTfs?.map(sub => `${sub.id.toUpperCase()}: ${ans?.[sub.id] === true ? 'Đúng' : ans?.[sub.id] === false ? 'Sai' : 'Chưa làm'}`).join(", ") || "";
+        correctAnswerStr = q.subTfs?.map(sub => `${sub.id.toUpperCase()}: ${sub.key ? 'Đúng' : 'Sai'}`).join(", ") || "";
+        const score = getQuestionAutoScore(q, ans);
+        isCorrect = score === q.points;
+      } else if (q.section === "SHORT") {
+        studentAnswerStr = ans !== undefined && ans !== "" ? String(ans) : "Chưa trả lời";
+        correctAnswerStr = q.shortAnswer || "";
+        const score = getQuestionAutoScore(q, ans);
+        isCorrect = score === q.points;
+      } else if (q.section === "ESSAY") {
+        studentAnswerStr = ans || "Không làm";
+        correctAnswerStr = "(Chấm tự luận bởi giáo viên)";
+        isCorrect = false;
+      }
+
+      return {
+        questionText: q.content,
+        studentAnswer: studentAnswerStr,
+        correctAnswer: correctAnswerStr,
+        isCorrect
+      };
+    });
+  }, [submitted, exam, answers]);
 
   function generateExam() {
     const selected: Question[] = [];
@@ -363,7 +378,6 @@ export default function PhysicsArena() {
         : `Đã tạo đề ${randomized.length} câu thành công với thời gian ${examMinutes} phút.`
     );
   }
-
   async function handlePublishAndGetLink() {
     if (!supabase) {
       alert("Chưa cấu hình Supabase. Hãy thêm NEXT_PUBLIC_SUPABASE_URL và NEXT_PUBLIC_SUPABASE_ANON_KEY trên Vercel.");
@@ -388,12 +402,9 @@ export default function PhysicsArena() {
       prompt("Đã xuất link thành công! Thầy hãy copy đường link sau gửi cho học sinh:", shareLink);
     }
   }
-
   function updateMatrix(sec: Section, d: Difficulty, value: number) {
     setMatrix(m => ({ ...m, [sec]: { ...m[sec], [d]: Math.max(0, Math.floor(value || 0)) } }));
   }
-
-  // CẬP NHẬT FILE MẪU EXCEL: ĐƯA NỘI DUNG Ý A, B, C, D CỦA CÂU ĐÚNG/SAI VÀO CÁC CỘT OPTION A, B, C, D TƯƠNG ỨNG
   function downloadExcelTemplate() {
     const templateData = [
       {
@@ -466,7 +477,6 @@ export default function PhysicsArena() {
     XLSX.utils.book_append_sheet(wb, ws, "Mau_4_Dang_Cau_Hoi");
     XLSX.writeFile(wb, "File_Mau_Ngan_Hang_KHTN_Full.xlsx");
   }
-
   function importFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
@@ -488,7 +498,6 @@ export default function PhysicsArena() {
     };
     if (file.name.endsWith(".json")) reader.readAsText(file); else reader.readAsArrayBuffer(file);
   }
-
   function handleMediaUpload(qId: string, type: "imageUrl" | "videoUrl" | "audioUrl", file: File) {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -498,7 +507,6 @@ export default function PhysicsArena() {
     };
     reader.readAsDataURL(file);
   }
-
   function insertSymbolToEssay(qId: string, symbol: string) {
     const textarea = essayTextareaRefs.current[qId];
     const currentVal = answers[qId] || "";
@@ -515,7 +523,6 @@ export default function PhysicsArena() {
       textarea.setSelectionRange(start + symbol.length, start + symbol.length);
     }, 0);
   }
-
   async function submitExam() {
     if (submitted) return;
     const currentAnswers = answersRef.current;
@@ -547,7 +554,6 @@ export default function PhysicsArena() {
     setNotice("Bài đã được nộp, chấm tự động và lưu trên Supabase thành công!");
   }
   submitExamRef.current = submitExam;
-
   async function loadSubmissions() {
     if (!supabase || !examCodeId) {
       setNotice("Chưa có kết nối Supabase hoặc chưa có mã đề.");
@@ -560,7 +566,6 @@ export default function PhysicsArena() {
     if (error) { setNotice("Không tải được kết quả: " + error.message); return; }
     setSubmissions((data || []) as Submission[]);
   }
-
   function exportSubmissionsExcel() {
     if (!submissions.length) { setNotice("Chưa có kết quả để xuất Excel."); return; }
     const rows = submissions.map((s, i) => ({
@@ -573,7 +578,6 @@ export default function PhysicsArena() {
     XLSX.utils.book_append_sheet(wb, ws, "Kết quả");
     XLSX.writeFile(wb, `Ket_qua_${examCodeId || "KHTN"}.xlsx`);
   }
-
   return (
     <main className="app-shell" style={{ 
       fontFamily: "Inter, system-ui, Arial, sans-serif", 
@@ -1232,6 +1236,22 @@ export default function PhysicsArena() {
                     <strong style={{ fontSize: "24px", color: "#1d4ed8" }}>{finalScore.toFixed(2)}</strong>
                   </div>
                 </div>
+              </div>
+
+              {/* Phần hiển thị chi tiết bài làm thêm vào dưới khối điểm số */}
+              <div className="mt-6 space-y-4 text-left">
+                <h3 className="text-lg font-bold text-gray-700">Chi tiết bài làm của bạn:</h3>
+                {submissionDetails && submissionDetails.map((item, index) => (
+                  <div key={index} className={`p-4 rounded-lg border ${item.isCorrect ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                    <p className="font-medium text-gray-800">Câu {index + 1}: {item.questionText}</p>
+                    <p className="text-sm mt-1">
+                      - Đáp án bạn chọn: <span className="font-semibold">{item.studentAnswer}</span>
+                    </p>
+                    <p className="text-sm">
+                      - Đáp án đúng: <span className="font-semibold text-green-600">{item.correctAnswer}</span>
+                    </p>
+                  </div>
+                ))}
               </div>
             </div>
           )}
