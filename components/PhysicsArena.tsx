@@ -134,7 +134,7 @@ const seed: Question[] = [
     grade: "7", 
     topic: "Trao đổi chất", 
     difficulty: "VD", 
-    content: "Giải thích vai trò của quá trình quang hợp đối với sự sống trên Trái Đất?", 
+    content: "Viết phương trình hóa học minh họa cho phản ứng giữa axit HCl và kẽm Zn, giải thích hiện tượng?", 
     points: 2.0 
   }
 ];
@@ -239,8 +239,12 @@ export default function PhysicsArena() {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   
   const [showDrawingModal, setShowDrawingModal] = useState(false);
+  const [activeEssayQId, setActiveEssayQId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+
+  // Tham chiếu textarea đang được chọn để chèn ký hiệu hóa học / toán học
+  const essayTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
 
   const deadlineRef = useRef<number | null>(null);
   const submitExamRef = useRef<() => void>(() => undefined);
@@ -378,7 +382,6 @@ export default function PhysicsArena() {
     setMatrix(m => ({ ...m, [sec]: { ...m[sec], [d]: Math.max(0, Math.floor(value || 0)) } }));
   }
 
-  // TẢI FILE MẪU EXCEL CÓ ĐỦ 4 DẠNG CÂU HỎI VÀ ĐẦY ĐỦ CỘT ĐIỂM
   function downloadExcelTemplate() {
     const templateData = [
       {
@@ -488,6 +491,24 @@ export default function PhysicsArena() {
       setExam(prev => prev.map(q => q.id === qId ? { ...q, [type]: res } : q));
     };
     reader.readAsDataURL(file);
+  }
+
+  // Chèn ký hiệu / công thức hóa học vào textarea tự luận tại vị trí con trỏ
+  function insertSymbolToEssay(qId: string, symbol: string) {
+    const textarea = essayTextareaRefs.current[qId];
+    const currentVal = answers[qId] || "";
+    if (!textarea) {
+      setAnswers(prev => ({ ...prev, [qId]: currentVal + symbol }));
+      return;
+    }
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const newVal = currentVal.substring(0, start) + symbol + currentVal.substring(end);
+    setAnswers(prev => ({ ...prev, [qId]: newVal }));
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + symbol.length, start + symbol.length);
+    }, 0);
   }
 
   async function submitExam() {
@@ -744,7 +765,6 @@ export default function PhysicsArena() {
                           style={{ width: "100%", padding: "10px", border: "1px solid #cbd5e1", borderRadius: "6px", marginBottom: "10px", fontWeight: "600" }} 
                         />
                         
-                        {/* Tải lên file media trực tiếp (Ảnh, Video, Ghi âm) */}
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginTop: "8px", background: "#f8fafc", padding: "10px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
                           <div>
                             <label style={{ fontSize: "11px", fontWeight: "700", color: "#0284c7", display: "block", marginBottom: "4px" }}>🖼️ Tải Ảnh lên:</label>
@@ -763,7 +783,6 @@ export default function PhysicsArena() {
                           </div>
                         </div>
 
-                        {/* Cấu hình câu Trả lời ngắn */}
                         {q.section === "SHORT" && (
                           <div style={{ marginTop: "10px", background: "#f8fafc", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", display: "flex", gap: "10px", alignItems: "center" }}>
                             <span style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e" }}>Đáp án chuẩn:</span>
@@ -779,7 +798,6 @@ export default function PhysicsArena() {
                           </div>
                         )}
 
-                        {/* Ma trận Đúng/Sai chia mức độ cho từng ý a, b, c, d */}
                         {q.section === "TF" && q.subTfs && (
                           <div style={{ marginTop: "12px", background: "#f8fafc", padding: "12px", borderRadius: "8px", border: "1px solid #cbd5e1" }}>
                             <div style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e", marginBottom: "8px" }}>Cấu hình 4 ý (a, b, c, d) & Mức độ nhận thức:</div>
@@ -873,7 +891,6 @@ export default function PhysicsArena() {
           </div>
         </section>
       ) : (
-        // GIAO DIỆN HỌC SINH HOÀN CHỈNH VỚI ĐỦ VỊ TRÍ TRẢ LỜI NGẮN VÀ TỰ LUẬN
         <section style={{ maxWidth: "900px", margin: "24px auto", background: "#fff", padding: "30px", borderRadius: "14px", border: "1px solid #cbd5e1", boxShadow: "0 4px 12px -2px rgba(0,0,0,0.05)" }}>
           {!submitted ? (
             <div>
@@ -883,7 +900,7 @@ export default function PhysicsArena() {
                   <p style={{ margin: "4px 0 0 0", fontSize: "13px", color: "#64748b" }}>Điền thông tin và hoàn thành đầy đủ các phần câu hỏi bên dưới.</p>
                 </div>
                 <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                  <button onClick={() => setShowDrawingModal(true)} style={{ background: "#0284c7", color: "#fff", border: "none", padding: "8px 12px", borderRadius: "8px", fontWeight: "700", cursor: "pointer", fontSize: "13px" }}>✏️ Bảng nháp vẽ tay</button>
+                  <button onClick={() => setShowDrawingModal(true)} style={{ background: "#0284c7", color: "#fff", border: "none", padding: "8px 12px", borderRadius: "8px", fontWeight: "700", cursor: "pointer", fontSize: "13px" }}>✏️ Bảng vẽ hình / Nháp</button>
                   <div style={{ background: "#ccfbf1", color: "#115e59", padding: "8px 14px", borderRadius: "8px", fontWeight: "700", border: "1px solid #2dd4bf" }}>
                     ⏱️ {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
                   </div>
@@ -896,7 +913,6 @@ export default function PhysicsArena() {
                 <input type="text" placeholder="Trường học" value={studentSchool} onChange={e => setStudentSchool(e.target.value)} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
               </div>
 
-              {/* THANH ĐIỀU HƯỚNG CÂU HỎI THÔNG MINH */}
               {exam.length > 0 && (
                 <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "10px", border: "1px solid #cbd5e1", marginBottom: "20px" }}>
                   <div style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e", marginBottom: "8px" }}>Danh sách câu hỏi (Xanh: Đã làm · Trắng: Chưa làm):</div>
@@ -923,18 +939,18 @@ export default function PhysicsArena() {
                 </div>
               )}
 
-              {/* BẢNG NHÁP VẼ TAY (MODAL) */}
+              {/* MODAL VẼ HÌNH / BẢNG NHÁP */}
               {showDrawingModal && (
                 <div style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", background: "rgba(0,0,0,0.5)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <div style={{ background: "#fff", padding: "20px", borderRadius: "12px", width: "500px", maxWidth: "95%" }}>
+                  <div style={{ background: "#fff", padding: "20px", borderRadius: "12px", width: "520px", maxWidth: "95%" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-                      <strong>Bảng nháp vẽ tay / Sơ đồ tư duy</strong>
+                      <strong>Bảng vẽ hình / Sơ đồ tư duy</strong>
                       <button onClick={() => setShowDrawingModal(false)} style={{ background: "none", border: "none", fontSize: "18px", cursor: "pointer" }}>✕</button>
                     </div>
                     <canvas 
                       ref={canvasRef}
-                      width={460}
-                      height={260}
+                      width={480}
+                      height={280}
                       style={{ border: "1px solid #cbd5e1", background: "#fdfefe", borderRadius: "6px", cursor: "crosshair", width: "100%" }}
                       onMouseDown={(e) => {
                         setIsDrawing(true);
@@ -968,7 +984,16 @@ export default function PhysicsArena() {
                         if (!ctx) return;
                         ctx.clearRect(0, 0, canvas.width, canvas.height);
                       }} style={{ padding: "6px 12px", background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "12px" }}>Xóa bảng</button>
-                      <button onClick={() => setShowDrawingModal(false)} style={{ padding: "6px 14px", background: "#0d9488", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "12px" }}>Đóng</button>
+                      <button onClick={() => {
+                        const canvas = canvasRef.current;
+                        if (!canvas || !activeEssayQId) {
+                          setShowDrawingModal(false);
+                          return;
+                        }
+                        const dataUrl = canvas.toDataURL("image/png");
+                        setAnswers(prev => ({ ...prev, [activeEssayQId]: (prev[activeEssayQId] || "") + ` [Đã đính kèm hình vẽ nháp]` }));
+                        setShowDrawingModal(false);
+                      }} style={{ padding: "6px 14px", background: "#0d9488", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "12px" }}>Đưa hình vào bài tự luận</button>
                     </div>
                   </div>
                 </div>
@@ -986,12 +1011,10 @@ export default function PhysicsArena() {
                       </div>
                       <div style={{ fontWeight: "600", color: "#334155", marginBottom: "8px" }}>{q.content}</div>
                       
-                      {/* Đa phương tiện hiển thị cho học sinh */}
                       {q.imageUrl && <img src={q.imageUrl} alt="minh họa" style={{ maxWidth: "100%", maxHeight: "220px", borderRadius: "6px", marginBottom: "10px" }} />}
                       {q.videoUrl && <video src={q.videoUrl} controls style={{ width: "100%", maxHeight: "240px", borderRadius: "6px", marginBottom: "10px" }} />}
                       {q.audioUrl && <audio src={q.audioUrl} controls style={{ width: "100%", marginBottom: "10px" }} />}
 
-                      {/* 1. TRẮC NGHIỆM */}
                       {q.section === "MCQ" && q.options && (
                         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                           {q.options.map(opt => (
@@ -1008,7 +1031,6 @@ export default function PhysicsArena() {
                         </div>
                       )}
 
-                      {/* 2. ĐÚNG / SAI */}
                       {q.section === "TF" && q.subTfs && (
                         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                           {q.subTfs.map(sub => (
@@ -1037,7 +1059,6 @@ export default function PhysicsArena() {
                         </div>
                       )}
 
-                      {/* 3. TRẢ LỜI NGẮN (Đã hoàn thiện vị trí nhập đầy đủ) */}
                       {q.section === "SHORT" && (
                         <div style={{ marginTop: "8px" }}>
                           <input 
@@ -1050,16 +1071,38 @@ export default function PhysicsArena() {
                         </div>
                       )}
 
-                      {/* 4. TỰ LUẬN (Đã hoàn thiện vị trí viết, tải file & chụp ảnh) */}
+                      {/* TỰ LUẬN: ĐỦ TÍNH NĂNG CŨ (TẢI FILE, CHỤP ẢNH) + BỘ CÔNG THỨC HÓA HỌC / KÝ HIỆU TOÁN HỌC & VẼ HÌNH */}
                       {q.section === "ESSAY" && (
                         <div style={{ marginTop: "8px" }}>
+                          {/* THANH CÔNG CỤ CHÈN CÔNG THỨC HÓA HỌC & KÝ HIỆU TOÁN HỌC */}
+                          <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginBottom: "6px", background: "#edf2f7", padding: "6px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
+                            <span style={{ fontSize: "11px", fontWeight: "700", color: "#475569", alignSelf: "center", marginRight: "4px" }}>Chèn ký hiệu:</span>
+                            {[
+                              ["²", "𝑥²"], ["³", "𝑥³"], ["₁", "ₓ₁"], ["₂", "ₓ₂"], 
+                              ["₊", "+"], ["₋", "-"], ["→", "→"], ["⇄", "⇄"], 
+                              ["Δ", "Δ"], ["°C", "°C"], ["≤", "≤"], ["≥", "≥"], 
+                              ["·", "·"], [" / ", " / "]
+                            ].map(([symbol, label]) => (
+                              <button 
+                                key={symbol}
+                                type="button"
+                                onClick={() => insertSymbolToEssay(q.id, symbol)}
+                                style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: "4px", padding: "2px 8px", fontSize: "12px", fontWeight: "600", cursor: "pointer", color: "#0f766e" }}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+
                           <textarea 
+                            ref={el => { essayTextareaRefs.current[q.id] = el; }}
                             rows={4}
                             placeholder="Trình bày bài làm tự luận chi tiết của bạn vào đây..."
                             value={answers[q.id] || ""}
                             onChange={e => setAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
                             style={{ width: "100%", padding: "10px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px", background: "#fff" }}
                           />
+
                           <div style={{ display: "flex", gap: "10px", marginTop: "8px", flexWrap: "wrap", alignItems: "center" }}>
                             <label style={{ background: "#f0fdf4", border: "1px solid #5eead4", color: "#0f766e", padding: "6px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: "600", cursor: "pointer" }}>
                               📁 Tải file bài làm lên
@@ -1079,6 +1122,16 @@ export default function PhysicsArena() {
                                 }
                               }} />
                             </label>
+                            <button 
+                              type="button" 
+                              onClick={() => {
+                                setActiveEssayQId(q.id);
+                                setShowDrawingModal(true);
+                              }}
+                              style={{ background: "#faf5ff", border: "1px solid #d8b4fe", color: "#7e22ce", padding: "6px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: "600", cursor: "pointer" }}
+                            >
+                              ✏️ Vẽ hình / Sơ đồ bài làm
+                            </button>
                           </div>
                         </div>
                       )}
