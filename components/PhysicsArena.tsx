@@ -2,17 +2,21 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || "";
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() || "";
 const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
+
 type Section = "MCQ" | "TF" | "SHORT" | "ESSAY";
 type Difficulty = "NB" | "TH" | "VD" | "VDC";
+
 type SubTFItem = {
   id: string;
   content: string;
   key: boolean;
   difficulty: Difficulty;
 };
+
 type Question = {
   id: string;
   section: Section;
@@ -31,12 +35,14 @@ type Question = {
   tolerance?: number;
   points: number;
 };
+
 type Matrix = {
   MCQ: Record<Difficulty, number>;
   TF: Record<Difficulty, number>;
   SHORT: Record<Difficulty, number>;
   ESSAY: Record<Difficulty, number>;
 };
+
 type Submission = {
   id?: string;
   exam_id: string;
@@ -49,6 +55,7 @@ type Submission = {
   answers_data: Record<string, any>;
   submitted_at: string;
 };
+
 function scoreTF(userAns: Record<string, boolean> | undefined, subTfs: SubTFItem[] | undefined, totalPoint: number): number {
   if (!subTfs || !userAns) return 0;
   let wrongCount = 0;
@@ -65,6 +72,7 @@ function scoreTF(userAns: Record<string, boolean> | undefined, subTfs: SubTFItem
   else if (wrongCount >= 4) deduction = totalPoint;
   return Math.max(0, totalPoint - deduction);
 }
+
 function getQuestionAutoScore(q: Question, answer: any): number {
   if (q.section === "MCQ") return answer === q.correctOption ? q.points : 0;
   if (q.section === "TF") return scoreTF(answer, q.subTfs, q.points);
@@ -77,6 +85,7 @@ function getQuestionAutoScore(q: Question, answer: any): number {
   }
   return 0;
 }
+
 const seed: Question[] = [
   { 
     id: "KHTN001", 
@@ -129,19 +138,23 @@ const seed: Question[] = [
     points: 2.0 
   }
 ];
+
 const defaultMatrix: Matrix = {
   MCQ: { NB: 1, TH: 1, VD: 0, VDC: 0 },
   TF: { NB: 0, TH: 1, VD: 0, VDC: 0 },
   SHORT: { NB: 0, TH: 1, VD: 0, VDC: 0 },
   ESSAY: { NB: 0, TH: 0, VD: 1, VDC: 0 }
 };
+
 const sectionLabel: Record<Section, string> = { 
   MCQ: "Phần I: Trắc nghiệm nhiều lựa chọn", 
   TF: "Phần II: Trắc nghiệm đúng / sai", 
   SHORT: "Phần III: Trắc nghiệm trả lời ngắn", 
   ESSAY: "Phần IV: Tự luận" 
 };
+
 const diffLabel: Record<Difficulty, string> = { NB: "Nhận biết", TH: "Thông hiểu", VD: "Vận dụng", VDC: "Vận dụng cao" };
+
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -150,6 +163,7 @@ function shuffle<T>(arr: T[]): T[] {
   }
   return a;
 }
+
 function shuffleExamSections(questionList: Question[]): Question[] {
   const mcq = questionList.filter(q => q.section === "MCQ");
   const tf = questionList.filter(q => q.section === "TF");
@@ -170,9 +184,9 @@ function shuffleExamSections(questionList: Question[]): Question[] {
     ...shuffleArray(essay)
   ];
 }
+
 function parseRow(r: Record<string, any>): Question {
   const section = String(r.section || "MCQ").toUpperCase() as Section;
-  
   const options = section === "MCQ" 
     ? ["A", "B", "C", "D"].map(k => ({ key: k, text: String(r[`option${k}`] ?? r[`option_${k.toLowerCase()}`] ?? "") })).filter(x => x.text)
     : undefined;
@@ -213,6 +227,7 @@ function parseRow(r: Record<string, any>): Question {
     points: Number(r.points || (section === "MCQ" ? 0.25 : section === "TF" ? 1.0 : section === "SHORT" ? 0.5 : 2.0))
   };
 }
+
 export default function PhysicsArena() {
   const [mode, setMode] = useState<"teacher" | "student">("teacher");
   const [tab, setTab] = useState<"bank" | "matrix" | "exam" | "grading" | "stats" | "ai_gen">("bank");
@@ -235,16 +250,13 @@ export default function PhysicsArena() {
   const [antiCheatWarnings, setAntiCheatWarnings] = useState(0);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   
-  // AI Question Generation States (Tích hợp thêm tính năng nạp tài liệu định hướng / mẫu câu hỏi)
+  // AI Question Generation States
   const [aiTopic, setAiTopic] = useState("Trao đổi chất và chuyển hóa năng lượng ở sinh vật");
   const [aiGrade, setAiGrade] = useState("7");
   const [aiSection, setAiSection] = useState<Section>("MCQ");
   const [aiCount, setAiCount] = useState<number>(3);
   const [aiGeneratedQuestions, setAiGeneratedQuestions] = useState<Question[]>([]);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
-  
-  // Trạng thái cho file định hướng / mẫu câu hỏi (.txt)
-  const [referenceText, setReferenceText] = useState('');
 
   // Student Review & Lookup state additions
   const [studentViewTab, setStudentViewTab] = useState<"take" | "lookup">("take");
@@ -260,7 +272,7 @@ export default function PhysicsArena() {
   // Exam list state
   const [examList, setExamList] = useState<any[]>([]);
   
-  // Canvas drawing state managed via useRef (optimized for high-performance rendering & diagram features)
+  // Canvas drawing state managed via useRef
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDrawingRef = useRef(false);
   const drawColorRef = useRef("#0f766e");
@@ -269,8 +281,10 @@ export default function PhysicsArena() {
   const essayTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const deadlineRef = useRef<number | null>(null);
   const submitExamRef = useRef<() => void>(() => undefined);
+
   useEffect(() => { answersRef.current = answers; }, [answers]);
   useEffect(() => { examRef.current = exam; }, [exam]);
+  
   useEffect(() => {
     if (mode === "student" && exam.length > 0 && !submitted && !deadlineRef.current) {
       const startSeconds = Math.max(1, seconds || examMinutes * 60);
@@ -278,6 +292,7 @@ export default function PhysicsArena() {
       setSeconds(startSeconds);
     }
   }, [mode, exam.length, submitted]);
+
   useEffect(() => {
     if (mode !== "student" || exam.length === 0 || submitted || !deadlineRef.current) return;
     const tick = () => {
@@ -289,6 +304,7 @@ export default function PhysicsArena() {
     const timer = window.setInterval(tick, 250);
     return () => window.clearInterval(timer);
   }, [mode, exam.length, submitted]);
+
   useEffect(() => {
     if (mode !== "student" || exam.length === 0 || submitted) return;
     const onVisibility = () => {
@@ -300,6 +316,7 @@ export default function PhysicsArena() {
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [mode, exam.length, submitted]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const examId = params.get("exam");
@@ -331,12 +348,13 @@ export default function PhysicsArena() {
       fetchExamFromCloud();
     }
   }, []);
-  // Tải danh sách đề khi vào tab ma trận hoặc khi cần
+
   useEffect(() => {
     if (tab === "matrix") {
       loadExamList();
     }
   }, [tab]);
+
   async function loadExamList() {
     if (!supabase) return;
     const { data, error } = await supabase
@@ -350,149 +368,81 @@ export default function PhysicsArena() {
     setExamList(data || []);
   }
 
-  // Xử lý đọc file văn bản định hướng tải lên (.txt)
-  const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setReferenceText(String(event.target?.result || ''));
-    };
-    reader.readAsText(file);
-  };
-
   const autoScore = useMemo(() => exam.reduce((sum, q) => sum + getQuestionAutoScore(q, answers[q.id]), 0), [exam, answers]);
   const essayTotalScore = Object.values(essayScores).reduce((a, b) => a + b, 0);
   const finalScore = autoScore + essayTotalScore;
-  const submissionDetails = useMemo(() => {
-    if (!submitted) return [];
-    return exam.map(q => {
-      const ans = answers[q.id];
-      let studentAnswerStr = "";
-      let correctAnswerStr = "";
-      let isCorrect = false;
-      let isUnanswered = false;
-      if (q.section === "MCQ") {
-        studentAnswerStr = ans || "Chưa chọn";
-        correctAnswerStr = q.correctOption || "";
-        isCorrect = ans === q.correctOption;
-        isUnanswered = !ans;
-      } else if (q.section === "TF") {
-        studentAnswerStr = q.subTfs?.map(sub => `${sub.id.toUpperCase()}: ${ans?.[sub.id] === true ? 'Đúng' : ans?.[sub.id] === false ? 'Sai' : 'Chưa làm'}`).join(", ") || "";
-        correctAnswerStr = q.subTfs?.map(sub => `${sub.id.toUpperCase()}: ${sub.key ? 'Đúng' : 'Sai'}`).join(", ") || "";
-        const score = getQuestionAutoScore(q, ans);
-        isCorrect = score === q.points;
-        isUnanswered = !ans || Object.keys(ans).length === 0;
-      } else if (q.section === "SHORT") {
-        studentAnswerStr = ans !== undefined && ans !== "" ? String(ans) : "Chưa trả lời";
-        correctAnswerStr = q.shortAnswer || "";
-        const score = getQuestionAutoScore(q, ans);
-        isCorrect = score === q.points;
-        isUnanswered = ans === undefined || ans === "" || String(ans).trim() === "";
-      } else if (q.section === "ESSAY") {
-        studentAnswerStr = ans || "Không làm";
-        correctAnswerStr = "(Chấm tự luận bởi giáo viên)";
-        isCorrect = false;
-        isUnanswered = !ans;
-      }
-      return {
-        question: q,
-        questionText: q.content,
-        studentAnswer: studentAnswerStr,
-        correctAnswer: correctAnswerStr,
-        isCorrect,
-        isUnanswered
-      };
-    });
-  }, [submitted, exam, answers]);
 
-  // AI Question Generation tích hợp ngữ cảnh tài liệu định hướng
   async function handleAIGenerate() {
     setIsGeneratingAi(true);
-    try {
-      const finalPrompt = `
-[TÀI LIỆU ĐỊNH HƯỚNG VÀ CÂU HỎI MẪU]:
-${referenceText || 'Không có tài liệu đính kèm.'}
-
-[YÊU CẦU THỰC TẾ]:
-Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp ${aiGrade} về chủ đề: ${aiTopic}.
-      `;
-
-      // Giữ cơ chế giả lập thông minh hoặc gọi API nếu có sẵn endpoint
-      setTimeout(() => {
-        const mockGenerated: Question[] = [];
-        for (let i = 1; i <= aiCount; i++) {
-          const id = "AI_GEN_" + Date.now() + "_" + i;
-          if (aiSection === "MCQ") {
-            mockGenerated.push({
-              id,
-              section: "MCQ",
-              subject: "Khoa học tự nhiên",
-              grade: aiGrade,
-              topic: aiTopic,
-              difficulty: "TH",
-              content: `[AI tạo theo định hướng] Câu hỏi trắc nghiệm số ${i} về chủ đề "${aiTopic}" (KHTN lớp ${aiGrade})?`,
-              options: [
-                { key: "A", text: "Đáp án đúng chuẩn khoa học cho câu hỏi này" },
-                { key: "B", text: "Phương án nhiễu thứ nhất thường gặp" },
-                { key: "C", text: "Phương án nhiễu thứ hai" },
-                { key: "D", text: "Phương án nhiễu thứ ba" }
-              ],
-              correctOption: "A",
-              points: 0.25
-            });
-          } else if (aiSection === "TF") {
-            mockGenerated.push({
-              id,
-              section: "TF",
-              subject: "Khoa học tự nhiên",
-              grade: aiGrade,
-              topic: aiTopic,
-              difficulty: "TH",
-              content: `[AI tạo theo định hướng] Nhận định các phát biểu sau về chủ đề "${aiTopic}":`,
-              subTfs: [
-                { id: "a", content: "Phát biểu thứ nhất mô tả đúng bản chất hiện tượng.", key: true, difficulty: "NB" },
-                { id: "b", content: "Phát biểu thứ hai có chứa chi tiết sai về mặt định lượng.", key: false, difficulty: "TH" },
-                { id: "c", content: "Phát biểu thứ ba phản ánh đúng ứng dụng thực tế.", key: true, difficulty: "VD" },
-                { id: "d", content: "Phát biểu thứ tư là kết luận chưa chính xác.", key: false, difficulty: "TH" }
-              ],
-              points: 1.0
-            });
-          } else if (aiSection === "SHORT") {
-            mockGenerated.push({
-              id,
-              section: "SHORT",
-              subject: "Khoa học tự nhiên",
-              grade: aiGrade,
-              topic: aiTopic,
-              difficulty: "VD",
-              content: `[AI tạo theo định hướng] Tính toán hoặc xác định giá trị ngắn gọn cho bài toán thuộc chủ đề "${aiTopic}":`,
-              shortAnswer: "100",
-              tolerance: 0.1,
-              points: 0.5
-            });
-          } else {
-            mockGenerated.push({
-              id,
-              section: "ESSAY",
-              subject: "Khoa học tự nhiên",
-              grade: aiGrade,
-              topic: aiTopic,
-              difficulty: "VDC",
-              content: `[AI tạo theo định hướng] Trình bày bản chất, ý nghĩa và giải thích chi tiết hiện tượng liên quan đến "${aiTopic}".`,
-              points: 2.0
-            });
-          }
+    setTimeout(() => {
+      const mockGenerated: Question[] = [];
+      for (let i = 1; i <= aiCount; i++) {
+        const id = "AI_GEN_" + Date.now() + "_" + i;
+        if (aiSection === "MCQ") {
+          mockGenerated.push({
+            id,
+            section: "MCQ",
+            subject: "Khoa học tự nhiên",
+            grade: aiGrade,
+            topic: aiTopic,
+            difficulty: "TH",
+            content: `[AI tạo] Câu hỏi trắc nghiệm số ${i} về chủ đề "${aiTopic}" (KHTN lớp ${aiGrade})?`,
+            options: [
+              { key: "A", text: "Đáp án đúng chuẩn khoa học cho câu hỏi này" },
+              { key: "B", text: "Phương án nhiễu thứ nhất thường gặp" },
+              { key: "C", text: "Phương án nhiễu thứ hai" },
+              { key: "D", text: "Phương án nhiễu thứ ba" }
+            ],
+            correctOption: "A",
+            points: 0.25
+          });
+        } else if (aiSection === "TF") {
+          mockGenerated.push({
+            id,
+            section: "TF",
+            subject: "Khoa học tự nhiên",
+            grade: aiGrade,
+            topic: aiTopic,
+            difficulty: "TH",
+            content: `[AI tạo] Nhận định các phát biểu sau về chủ đề "${aiTopic}":`,
+            subTfs: [
+              { id: "a", content: "Phát biểu thứ nhất mô tả đúng bản chất hiện tượng.", key: true, difficulty: "NB" },
+              { id: "b", content: "Phát biểu thứ hai có chứa chi tiết sai về mặt định lượng.", key: false, difficulty: "TH" },
+              { id: "c", content: "Phát biểu thứ ba phản ánh đúng ứng dụng thực tế.", key: true, difficulty: "VD" },
+              { id: "d", content: "Phát biểu thứ tư là kết luận chưa chính xác.", key: false, difficulty: "TH" }
+            ],
+            points: 1.0
+          });
+        } else if (aiSection === "SHORT") {
+          mockGenerated.push({
+            id,
+            section: "SHORT",
+            subject: "Khoa học tự nhiên",
+            grade: aiGrade,
+            topic: aiTopic,
+            difficulty: "VD",
+            content: `[AI tạo] Tính toán hoặc xác định giá trị ngắn gọn cho bài toán thuộc chủ đề "${aiTopic}":`,
+            shortAnswer: "100",
+            tolerance: 0.1,
+            points: 0.5
+          });
+        } else {
+          mockGenerated.push({
+            id,
+            section: "ESSAY",
+            subject: "Khoa học tự nhiên",
+            grade: aiGrade,
+            topic: aiTopic,
+            difficulty: "VDC",
+            content: `[AI tạo] Trình bày bản chất, ý nghĩa và giải thích chi tiết hiện tượng liên quan đến "${aiTopic}".`,
+            points: 2.0
+          });
         }
-        setAiGeneratedQuestions(mockGenerated);
-        setIsGeneratingAi(false);
-        setNotice(`🤖 AI đã soạn thành công ${aiCount} câu hỏi dựa trên tài liệu định hướng cho chủ đề "${aiTopic}"!`);
-      }, 800);
-    } catch (error) {
-      console.error(error);
+      }
+      setAiGeneratedQuestions(mockGenerated);
       setIsGeneratingAi(false);
-    }
+      setNotice(`🤖 AI đã soạn thành công ${aiCount} câu hỏi theo chủ đề "${aiTopic}"!`);
+    }, 800);
   }
 
   async function handleStudentLookup() {
@@ -530,6 +480,7 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
     }
     setNotice("Đã tìm thấy thông tin bài làm của học sinh!");
   }
+
   function generateExam() {
     const selected: Question[] = [];
     (Object.keys(matrix) as Section[]).forEach(sec => {
@@ -562,9 +513,10 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
         : `Đã tạo đề ${randomized.length} câu thành công với thời gian ${examMinutes} phút.`
     );
   }
+
   async function handlePublishAndGetLink() {
     if (!supabase) {
-      alert("Chưa cấu hình Supabase. Hãy thêm NEXT_PUBLIC_SUPABASE_URL và NEXT_PUBLIC_SUPABASE_ANON_KEY trên Vercel.");
+      alert("Chưa cấu hình Supabase. Hãy thêm biến môi trường trên Vercel.");
       return;
     }
     if (exam.length === 0) {
@@ -589,9 +541,11 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
       loadExamList();
     }
   }
+
   function updateMatrix(sec: Section, d: Difficulty, value: number) {
     setMatrix(m => ({ ...m, [sec]: { ...m[sec], [d]: Math.max(0, Math.floor(value || 0)) } }));
   }
+
   function downloadExcelTemplate() {
     const templateData = [
       {
@@ -664,6 +618,7 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
     XLSX.utils.book_append_sheet(wb, ws, "Mau_4_Dang_Cau_Hoi");
     XLSX.writeFile(wb, "File_Mau_Ngan_Hang_KHTN_Full.xlsx");
   }
+
   function importFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
@@ -685,6 +640,7 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
     };
     if (file.name.endsWith(".json")) reader.readAsText(file); else reader.readAsArrayBuffer(file);
   }
+
   function handleMediaUpload(qId: string, type: "imageUrl" | "videoUrl" | "audioUrl", file: File) {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -694,6 +650,7 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
     };
     reader.readAsDataURL(file);
   }
+
   function insertSymbolToEssay(qId: string, symbol: string) {
     const textarea = essayTextareaRefs.current[qId];
     const currentVal = answers[qId] || "";
@@ -710,6 +667,7 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
       textarea.setSelectionRange(start + symbol.length, start + symbol.length);
     }, 0);
   }
+
   async function submitExam() {
     if (submitted) return;
     if (!studentName.trim()) {
@@ -745,6 +703,7 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
     setNotice("Bài đã được nộp, chấm tự động và lưu trên Supabase thành công!");
   }
   submitExamRef.current = submitExam;
+
   async function loadSubmissions() {
     if (!supabase || !examCodeId) {
       setNotice("Chưa có kết nối Supabase hoặc chưa có mã đề.");
@@ -757,6 +716,7 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
     if (error) { setNotice("Không tải được kết quả: " + error.message); return; }
     setSubmissions((data || []) as Submission[]);
   }
+
   function exportSubmissionsExcel() {
     if (!submissions.length) { setNotice("Chưa có kết quả để xuất Excel."); return; }
     const rows = submissions.map((s, i) => ({
@@ -769,6 +729,7 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
     XLSX.utils.book_append_sheet(wb, ws, "Kết quả");
     XLSX.writeFile(wb, `Ket_qua_${examCodeId.trim() || "KHTN"}.xlsx`);
   }
+
   return (
     <main className="app-shell" style={{ 
       fontFamily: "Inter, system-ui, Arial, sans-serif", 
@@ -811,7 +772,9 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
           <button onClick={() => setMode("student")} style={{ padding: "8px 14px", background: mode === "student" ? "#0d9488" : "#f0fdf4", color: mode === "student" ? "#fff" : "#0f766e", border: "1px solid #5eead4", borderRadius: "8px", cursor: "pointer", fontWeight: "700" }}>👨‍🎓 Học sinh</button>
         </div>
       </header>
+
       {notice && <div className="notice" style={{ background: "#f0fdf4", border: "1px solid #5eead4", padding: "12px 24px", margin: "20px 28px", borderRadius: "10px", color: "#115e59", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 2px 4px rgba(0,0,0,0.02)" }}><span>{notice}</span><button onClick={() => setNotice("")} style={{ background: "none", border: "none", cursor: "pointer", fontWeight: "bold", fontSize: "16px", color: "#0f766e" }}>×</button></div>}
+
       {mode === "teacher" ? (
         <section className="workspace" style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: "24px", padding: "0 28px", marginTop: "24px" }}>
           <aside className="sidebar" style={{ background: "#ffffff", padding: "18px", borderRadius: "14px", border: "1px solid #cbd5e1", height: "fit-content", boxShadow: "0 4px 12px -2px rgba(0, 0, 0, 0.05)" }}>
@@ -895,32 +858,12 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
               </div>
             )}
             
-            {/* TÍNH NĂNG MỚI: AI TẠO ĐỀ THÔNG MINH (Tích hợp nạp file định hướng) */}
             {tab === "ai_gen" && (
-              <div className="p-4 space-y-4">
-                <div style={{ marginBottom: "15px" }}>
+              <div>
+                <div style={{ marginBottom: "20px" }}>
                   <h2 style={{ fontSize: "20px", margin: 0, color: "#0f766e" }}>🤖 AI Tạo đề thông minh từ ứng dụng giáo viên</h2>
-                  <p style={{ color: "#64748b", margin: "4px 0 0 0", fontSize: "13px" }}>Hệ thống trợ lý AI sẽ tự động biên soạn câu hỏi chuẩn xác bám sát chương trình KHTN dựa theo chủ đề và tài liệu định hướng bạn tải lên.</p>
+                  <p style={{ color: "#64748b", margin: "4px 0 0 0", fontSize: "13px" }}>Hệ thống trợ lý AI sẽ tự động biên soạn câu hỏi chuẩn xác bám sát chương trình KHTN dựa theo chủ đề bạn yêu cầu.</p>
                 </div>
-
-                {/* Thành phần bổ sung: Tải tệp định hướng */}
-                <div style={{ background: "#f8fafc", padding: "14px", borderRadius: "10px", border: "1px solid #cbd5e1", marginBottom: "16px" }}>
-                  <label className="block text-sm font-medium text-gray-700 mb-1" style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e", display: "block", marginBottom: "6px" }}>
-                    Tải file định hướng / mẫu câu hỏi (.txt):
-                  </label>
-                  <input 
-                    type="file" 
-                    accept=".txt" 
-                    onChange={handleFileUpload}
-                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                  />
-                  {referenceText && (
-                    <span className="text-xs text-green-600 mt-1 block" style={{ fontSize: "12px", color: "#059669", marginTop: "6px", fontWeight: "600" }}>
-                      ✓ Đã nạp thành công tài liệu định hướng ({referenceText.length} ký tự).
-                    </span>
-                  )}
-                </div>
-
                 <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "10px", border: "1px solid #cbd5e1", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
                   <div>
                     <label style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e", display: "block", marginBottom: "6px" }}>Chủ đề / Nội dung bài học:</label>
@@ -970,12 +913,10 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
                     />
                   </div>
                 </div>
-
                 <div style={{ display: "flex", gap: "10px", marginBottom: "24px" }}>
                   <button 
                     onClick={handleAIGenerate} 
                     disabled={isGeneratingAi}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
                     style={{ background: "#0d9488", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "8px", fontWeight: "700", cursor: "pointer", fontSize: "13px" }}
                   >
                     {isGeneratingAi ? "⏳ Đang tổng hợp từ AI..." : "✨ Yêu cầu AI soạn câu hỏi"}
@@ -993,7 +934,6 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
                     </button>
                   )}
                 </div>
-
                 {aiGeneratedQuestions.length > 0 && (
                   <div>
                     <h3 style={{ fontSize: "15px", color: "#0f766e", marginBottom: "12px" }}>Kết quả AI vừa biên soạn ({aiGeneratedQuestions.length} câu):</h3>
@@ -1061,47 +1001,44 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
                     ))}
                   </div>
                 ))}
-                {/* Danh sách đề đã tạo */}
+                
                 <div className="exam-list-section" style={{ marginTop: "20px" }}>
-                    <h3 style={{ fontSize: "15px", color: "#0f766e", marginBottom: "10px" }}>Danh sách đề đã tạo</h3>
-                    <table border={1} cellPadding={8} style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                        <thead>
-                            <tr style={{ background: '#f8fafc', color: '#0f766e' }}>
-                                <th style={{ textAlign: 'center', padding: '8px', border: '1px solid #cbd5e1' }}>STT</th>
-                                <th style={{ textAlign: 'center', padding: '8px', border: '1px solid #cbd5e1' }}>Mã đề</th>
-                                <th style={{ padding: '8px', border: '1px solid #cbd5e1' }}>Tên đề</th>
-                                <th style={{ textAlign: 'center', padding: '8px', border: '1px solid #cbd5e1' }}>Thời gian</th>
-                                <th style={{ textAlign: 'center', padding: '8px', border: '1px solid #cbd5e1' }}>Thao tác</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {examList.length === 0 ? (
-                              <tr>
-                                <td colSpan={5} style={{ textAlign: 'center', padding: '15px', color: '#64748b' }}>Chưa có đề thi nào lưu trên hệ thống.</td>
+                    <h3 style={{ fontSize: "16px", color: "#0f766e", marginBottom: "10px" }}>Danh sách đề đã tạo</h3>
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                          <thead>
+                              <tr style={{ background: "#f8fafc", color: "#0f766e", textAlign: "left" }}>
+                                  <th style={{ padding: "10px", border: "1px solid #cbd5e1", textAlign: 'center' }}>STT</th>
+                                  <th style={{ padding: "10px", border: "1px solid #cbd5e1", textAlign: 'center' }}>Mã đề</th>
+                                  <th style={{ padding: "10px", border: "1px solid #cbd5e1" }}>Tên đề</th>
+                                  <th style={{ padding: "10px", border: "1px solid #cbd5e1", textAlign: 'center' }}>Thời gian</th>
+                                  <th style={{ padding: "10px", border: "1px solid #cbd5e1", textAlign: 'center' }}>Thao tác</th>
                               </tr>
-                            ) : (
-                              examList.map((examItem, index) => {
-                                const examCode = examItem.id || examItem.exam_code;
-                                const examLink = `${window.location.origin}/?exam=${examCode}`;
-                                return (
-                                    <tr key={examCode || index}>
-                                        <td style={{ textAlign: 'center', padding: '8px', border: '1px solid #cbd5e1' }}>{index + 1}</td>
-                                        <td style={{ textAlign: 'center', padding: '8px', border: '1px solid #cbd5e1' }}><b>{examCode}</b></td>
-                                        <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>{examItem.title || 'Đề kiểm tra KHTN'}</td>
-                                        <td style={{ textAlign: 'center', padding: '8px', border: '1px solid #cbd5e1' }}>{examItem.duration || 45} phút</td>
-                                        <td style={{ textAlign: 'center', padding: '8px', border: '1px solid #cbd5e1' }}>
-                                            <button onClick={() => { navigator.clipboard.writeText(examLink); alert(`Đã sao chép link đề ${examCode}!`); }} style={{ marginRight: '5px', background: '#f0fdf4', border: '1px solid #5eead4', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontWeight: '600', color: '#0f766e' }}>Copy Link</button>
-                                            <a href={examLink} target="_blank" rel="noreferrer" style={{ color: '#0284c7', fontWeight: '600', textDecoration: 'none' }}>Làm thử</a>
-                                        </td>
-                                    </tr>
-                                );
-                              })
-                            )}
-                        </tbody>
-                    </table>
+                          </thead>
+                          <tbody>
+                              {examList.map((examItem, index) => {
+                                  const examCode = examItem.id || examItem.exam_code;
+                                  const examLink = `${window.location.origin}/?exam=${examCode}`;
+                                  return (
+                                      <tr key={examCode || index}>
+                                          <td style={{ padding: "10px", border: "1px solid #cbd5e1", textAlign: 'center' }}>{index + 1}</td>
+                                          <td style={{ padding: "10px", border: "1px solid #cbd5e1", textAlign: 'center' }}><b>{examCode}</b></td>
+                                          <td style={{ padding: "10px", border: "1px solid #cbd5e1" }}>{examItem.title || 'Đề kiểm tra KHTN'}</td>
+                                          <td style={{ padding: "10px", border: "1px solid #cbd5e1", textAlign: 'center' }}>{examItem.duration || 15} phút</td>
+                                          <td style={{ padding: "10px", border: "1px solid #cbd5e1", textAlign: 'center' }}>
+                                              <button onClick={() => { navigator.clipboard.writeText(examLink); alert(`Đã sao chép link đề ${examCode}!`); }} style={{ marginRight: '8px', padding: '4px 8px', background: '#f0fdf4', border: '1px solid #5eead4', borderRadius: '4px', cursor: 'pointer', fontWeight: '600', color: '#0f766e' }}>Copy Link</button>
+                                              <a href={examLink} target="_blank" rel="noreferrer" style={{ color: '#0284c7', fontWeight: '600', textDecoration: 'none' }}>Làm thử</a>
+                                          </td>
+                                      </tr>
+                                  );
+                              })}
+                          </tbody>
+                      </table>
+                    </div>
                 </div>
               </div>
             )}
+
             {tab === "exam" && (
               <div>
                 <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
@@ -1226,6 +1163,7 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
                 )}
               </div>
             )}
+
             {tab === "grading" && (
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -1349,6 +1287,7 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
                 )}
               </div>
             )}
+
             {tab === "stats" && (
               <div>
                 <h2 style={{ fontSize: "20px", color: "#0f766e", marginBottom: "10px" }}>Thống kê phổ điểm</h2>
@@ -1359,7 +1298,6 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
         </section>
       ) : (
         <section style={{ maxWidth: "900px", margin: "24px auto", background: "#fff", padding: "30px", borderRadius: "14px", border: "1px solid #cbd5e1", boxShadow: "0 4px 12px -2px rgba(0,0,0,0.05)" }}>
-          {/* Student Sub-navigation: Take Exam vs Lookup & Review */}
           <div style={{ display: "flex", gap: "10px", marginBottom: "20px", borderBottom: "1px solid #cbd5e1", paddingBottom: "12px" }}>
             <button 
               onClick={() => setStudentViewTab("take")}
@@ -1374,6 +1312,7 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
               🔍 Tra cứu & Xem lại bài làm
             </button>
           </div>
+
           {studentViewTab === "lookup" ? (
             <div>
               <h3 style={{ color: "#0f766e", marginBottom: "8px", fontSize: "18px" }}>Tra cứu kết quả & Xem lại bài làm chi tiết</h3>
@@ -1639,7 +1578,6 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
                               {q.imageUrl && <img src={q.imageUrl} alt="minh họa" style={{ maxWidth: "100%", maxHeight: "220px", borderRadius: "6px", marginBottom: "10px" }} />}
                               {q.videoUrl && <video src={q.videoUrl} controls style={{ width: "100%", maxHeight: "240px", borderRadius: "6px", marginBottom: "10px" }} />}
                               {q.audioUrl && <audio src={q.audioUrl} controls style={{ width: "100%", marginBottom: "10px" }} />}
-                              
                               {q.section === "MCQ" && q.options && (
                                 <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                                   {q.options.map(opt => (
@@ -1647,23 +1585,21 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
                                       <input 
                                         type="radio" 
                                         name={`q_${q.id}`} 
-                                        checked={answers[q.id] === opt.key}
-                                        onChange={() => setAnswers(prev => ({ ...prev, [q.id]: opt.key }))}
+                                        checked={answers[q.id] === opt.key} 
+                                        onChange={() => setAnswers(prev => ({ ...prev, [q.id]: opt.key }))} 
                                       />
                                       <b>{opt.key}.</b> {opt.text}
                                     </label>
                                   ))}
                                 </div>
                               )}
-
                               {q.section === "TF" && q.subTfs && (
                                 <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                                   {q.subTfs.map(sub => (
-                                    <div key={sub.id} style={{ display: "grid", gridTemplateColumns: "30px 1fr 140px", gap: "10px", alignItems: "center", background: "#fff", padding: "8px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
-                                      <b style={{ color: "#0284c7" }}>{sub.id.toUpperCase()}.</b>
-                                      <span style={{ fontSize: "13px" }}>{sub.content}</span>
-                                      <div style={{ display: "flex", gap: "10px" }}>
-                                        <label style={{ fontSize: "12px", cursor: "pointer", fontWeight: "600" }}>
+                                    <div key={sub.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", padding: "8px", borderRadius: "6px", border: "1px solid #e2e8f0", flexWrap: "wrap", gap: "8px" }}>
+                                      <span style={{ fontSize: "13px" }}><b>{sub.id.toUpperCase()}.</b> {sub.content}</span>
+                                      <div style={{ display: "flex", gap: "12px" }}>
+                                        <label style={{ fontSize: "12px", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}>
                                           <input 
                                             type="radio" 
                                             name={`tf_${q.id}_${sub.id}`} 
@@ -1671,7 +1607,7 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
                                             onChange={() => setAnswers(prev => ({ ...prev, [q.id]: { ...(prev[q.id] || {}), [sub.id]: true } }))}
                                           /> Đúng
                                         </label>
-                                        <label style={{ fontSize: "12px", cursor: "pointer", fontWeight: "600" }}>
+                                        <label style={{ fontSize: "12px", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}>
                                           <input 
                                             type="radio" 
                                             name={`tf_${q.id}_${sub.id}`} 
@@ -1684,48 +1620,72 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
                                   ))}
                                 </div>
                               )}
-
                               {q.section === "SHORT" && (
-                                <div>
+                                <div style={{ marginTop: "8px" }}>
                                   <input 
                                     type="text" 
-                                    placeholder="Nhập đáp án ngắn gọn..." 
+                                    placeholder="Nhập kết quả trả lời ngắn của bạn..."
                                     value={answers[q.id] || ""}
                                     onChange={e => setAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
-                                    style={{ padding: "8px 12px", width: "100%", maxWidth: "300px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px" }}
+                                    style={{ width: "100%", padding: "10px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "14px", fontWeight: "600", background: "#fff" }}
                                   />
                                 </div>
                               )}
-
                               {q.section === "ESSAY" && (
-                                <div>
-                                  <div style={{ display: "flex", gap: "6px", marginBottom: "6px", flexWrap: "wrap" }}>
-                                    {["℃", "m/s", "Hz", "Ω", "Δ", "≈", "≤", "≥", "∑", "→", "H₂O", "CO₂"].map(sym => (
+                                <div style={{ marginTop: "8px" }}>
+                                  <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginBottom: "6px", background: "#edf2f7", padding: "6px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
+                                    <span style={{ fontSize: "11px", fontWeight: "700", color: "#475569", alignSelf: "center", marginRight: "4px" }}>Chèn ký hiệu:</span>
+                                    {[
+                                      ["²", "𝑥²"], ["³", "𝑥³"], ["₁", "ₓ₁"], ["₂", "ₓ₂"], 
+                                      ["₊", "+"], ["₋", "-"], ["→", "→"], ["⇄", "⇄"], 
+                                      ["Δ", "Δ"], ["°C", "°C"], ["≤", "≤"], ["≥", "≥"], 
+                                      ["·", "·"], [" / ", " / "]
+                                    ].map(([symbol, label]) => (
                                       <button 
-                                        key={sym} 
+                                        key={symbol}
                                         type="button"
-                                        onClick={() => insertSymbolToEssay(q.id, sym)}
-                                        style={{ padding: "2px 6px", background: "#f0fdf4", border: "1px solid #5eead4", borderRadius: "4px", fontSize: "11px", fontWeight: "700", cursor: "pointer", color: "#0f766e" }}
+                                        onClick={() => insertSymbolToEssay(q.id, symbol)}
+                                        style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: "4px", padding: "2px 8px", fontSize: "12px", fontWeight: "600", cursor: "pointer", color: "#0f766e" }}
                                       >
-                                        {sym}
+                                        {label}
                                       </button>
                                     ))}
-                                    <button 
-                                      type="button"
-                                      onClick={() => { setActiveEssayQId(q.id); setShowDrawingModal(true); }}
-                                      style={{ padding: "2px 8px", background: "#fef3c7", border: "1px solid #f59e0b", borderRadius: "4px", fontSize: "11px", fontWeight: "700", cursor: "pointer", color: "#92400e" }}
-                                    >
-                                      ✏️ Vẽ hình đính kèm
-                                    </button>
                                   </div>
                                   <textarea 
                                     ref={el => { essayTextareaRefs.current[q.id] = el; }}
                                     rows={4}
-                                    placeholder="Trình bày bài làm tự luận chi tiết tại đây..."
+                                    placeholder="Trình bày bài làm tự luận chi tiết của bạn vào đây..."
                                     value={answers[q.id] || ""}
                                     onChange={e => setAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
-                                    style={{ width: "100%", padding: "10px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px" }}
+                                    style={{ width: "100%", padding: "10px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px", background: "#fff" }}
                                   />
+                                  <div style={{ display: "flex", gap: "10px", marginTop: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                                    <label style={{ background: "#f0fdf4", border: "1px solid #5eead4", color: "#0f766e", padding: "6px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: "600", cursor: "pointer" }}>
+                                      📁 Tải file bài làm lên
+                                      <input type="file" hidden onChange={e => {
+                                        const f = e.target.files?.[0];
+                                        if (f) {
+                                          setAnswers(prev => ({ ...prev, [q.id]: (prev[q.id] || "") + ` [Đã đính kèm file: ${f.name}]` }));
+                                        }
+                                      }} />
+                                    </label>
+                                    <label style={{ background: "#eff6ff", border: "1px solid #93c5fd", color: "#1d4ed8", padding: "6px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: "600", cursor: "pointer" }}>
+                                      📷 Chụp ảnh bài làm từ điện thoại
+                                      <input type="file" accept="image/*" capture="environment" hidden onChange={e => {
+                                        const f = e.target.files?.[0];
+                                        if (f) {
+                                          setAnswers(prev => ({ ...prev, [q.id]: (prev[q.id] || "") + ` [Đã đính kèm ảnh chụp: ${f.name}]` }));
+                                        }
+                                      }} />
+                                    </label>
+                                    <button 
+                                      type="button" 
+                                      onClick={() => { setActiveEssayQId(q.id); setShowDrawingModal(true); }}
+                                      style={{ background: "#fdf4ff", border: "1px solid #f0abfc", color: "#a21caf", padding: "6px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: "600", cursor: "pointer" }}
+                                    >
+                                      ✏️ Vẽ sơ đồ / Công thức
+                                    </button>
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -1734,39 +1694,38 @@ Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp $
                       </div>
                     );
                   })}
-                  <div style={{ display: "flex", justifyContent: "center", marginTop: "20px" }}>
-                    <button onClick={submitExam} style={{ background: "#0d9488", color: "#fff", border: "none", padding: "12px 32px", borderRadius: "8px", fontWeight: "800", fontSize: "15px", cursor: "pointer", boxShadow: "0 4px 6px rgba(13,148,136,0.2)" }}>
-                      📤 Nộp bài kiểm tra
+                  <div style={{ textAlign: "center", marginTop: "30px" }}>
+                    <button 
+                      onClick={submitExam}
+                      style={{ background: "#0d9488", color: "#fff", border: "none", padding: "14px 40px", borderRadius: "10px", fontSize: "16px", fontWeight: "800", cursor: "pointer", boxShadow: "0 4px 12px rgba(13,148,136,0.3)" }}
+                    >
+                      🚀 Nộp bài kiểm tra
                     </button>
                   </div>
                 </div>
-              )
-            ) : (
-              <div style={{ background: "#f0fdf4", border: "1px solid #5eead4", padding: "24px", borderRadius: "12px" }}>
-                <h3 style={{ color: "#0f766e", marginTop: 0, fontSize: "20px" }}>🎉 Đã nộp bài thành công!</h3>
-                <p style={{ color: "#334155", fontSize: "14px" }}>Cảm ơn em <b>{studentName}</b> đã hoàn thành bài kiểm tra Khoa học tự nhiên.</p>
-                
-                <div style={{ background: "#fff", padding: "16px", borderRadius: "8px", border: "1px solid #cbd5e1", margin: "16px 0", display: "flex", gap: "20px" }}>
-                  <div>Điểm trắc nghiệm tự động: <b>{autoScore.toFixed(2)} điểm</b></div>
-                  <div>Trạng thái: <b style={{ color: "#059669" }}>Đã lưu kết quả trên hệ thống</b></div>
-                </div>
-
-                <div style={{ marginTop: "20px" }}>
-                  <h4 style={{ color: "#0f766e", fontSize: "15px", marginBottom: "12px" }}>Xem lại đáp án chi tiết:</h4>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                    {submissionDetails.map((item, i) => (
-                      <div key={item.question.id} style={{ background: "#fff", padding: "14px", borderRadius: "8px", border: `1px solid ${item.isCorrect ? '#86efac' : '#fca5a5'}` }}>
-                        <div style={{ fontWeight: "700", color: "#0f766e", fontSize: "13px", marginBottom: "4px" }}>Câu {i + 1}: {item.questionText}</div>
-                        <div style={{ fontSize: "13px", color: "#334155", display: "flex", flexDirection: "column", gap: "2px" }}>
-                          <div>- Bài làm của bạn: <b style={{ color: item.isCorrect ? '#059669' : '#dc2626' }}>{item.studentAnswer}</b></div>
-                          <div>- Đáp án chuẩn: <b style={{ color: '#059669' }}>{item.correctAnswer}</b></div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+              )}
+            </div>
+          ) : (
+            <div>
+              <div style={{ textAlign: "center", marginBottom: "20px" }}>
+                <h2 style={{ fontSize: "22px", color: "#0f766e", marginBottom: "6px" }}>🎉 Đã nộp bài thành công!</h2>
+                <p style={{ color: "#64748b", fontSize: "14px" }}>Hệ thống đã tự động chấm điểm trắc nghiệm và ghi nhận kết quả của bạn.</p>
               </div>
-            ))}
+              <div style={{ background: "#f0fdf4", border: "1px solid #5eead4", padding: "20px", borderRadius: "10px", marginBottom: "20px", textAlign: "center" }}>
+                <div style={{ fontSize: "14px", color: "#0f766e", fontWeight: "700" }}>Kết quả của học sinh: {studentName} ({studentClass || "Chưa rõ lớp"})</div>
+                <div style={{ fontSize: "32px", fontWeight: "900", color: "#059669", margin: "10px 0" }}>{autoScore.toFixed(2)} điểm</div>
+                <div style={{ fontSize: "12px", color: "#64748b" }}>Số câu trả lời đúng tự động trên tổng số câu hỏi trắc nghiệm / khách quan.</div>
+              </div>
+              <div style={{ display: "flex", justifyContent: "center", gap: "12px" }}>
+                <button 
+                  onClick={() => { setSubmitted(false); setAnswers({}); }}
+                  style={{ background: "#f0fdf4", color: "#0f766e", border: "1px solid #5eead4", padding: "10px 20px", borderRadius: "8px", fontWeight: "700", cursor: "pointer" }}
+                >
+                  🔄 Làm lại bài
+                </button>
+              </div>
+            </div>
+          ))}
         </section>
       )}
     </main>
