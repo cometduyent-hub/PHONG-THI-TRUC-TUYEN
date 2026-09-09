@@ -804,7 +804,7 @@ export default function PhysicsArena() {
               else if (pass !== null) alert("Sai mật khẩu!");
             }} style={{ padding: "8px 14px", background: "#f0fdf4", border: "1px solid #5eead4", borderRadius: "8px", cursor: "pointer", fontWeight: "700", color: "#0f766e" }}>🔒 Giáo viên</button>
           )}
-          <button onClick={() => setMode("student")} style={{ padding: "8px 14px", background: mode === "student" ? "#0d9488" : "#f0fdf4", color: mode === "student" ? "#fff" : "#0f766e", border: "1px solid #5eead4", borderRadius: "8px", cursor: "pointer", fontWeight: "700" }}>👨‍🎓 Học sinh</button>
+          <button onClick={() => setMode("student")} style={{ padding: "8px 14px", background: mode === "student" ? "#0d9488" : "#f0fdf4", color: mode === "student" ? "#fff" : "#0f766e", border: "1px solid #5eead4", borderRadius: "8px", cursor: "pointer", fontWeight: "700" }}>👨🎓 Học sinh</button>
         </div>
       </header>
       {notice && <div className="notice" style={{ background: "#f0fdf4", border: "1px solid #5eead4", padding: "12px 24px", margin: "20px 28px", borderRadius: "10px", color: "#115e59", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 2px 4px rgba(0,0,0,0.02)" }}><span>{notice}</span><button onClick={() => setNotice("")} style={{ background: "none", border: "none", cursor: "pointer", fontWeight: "bold", fontSize: "16px", color: "#0f766e" }}>×</button></div>}
