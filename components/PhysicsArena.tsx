@@ -242,6 +242,7 @@ export default function PhysicsArena() {
   const [aiCount, setAiCount] = useState<number>(3);
   const [aiGeneratedQuestions, setAiGeneratedQuestions] = useState<Question[]>([]);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+
   // Student Review & Lookup state additions
   const [studentViewTab, setStudentViewTab] = useState<"take" | "lookup">("take");
   const [lookupExamCode, setLookupExamCode] = useState("");
@@ -252,9 +253,6 @@ export default function PhysicsArena() {
   const [viewingSubmission, setViewingSubmission] = useState<Submission | null>(null);
   const [showDrawingModal, setShowDrawingModal] = useState(false);
   const [activeEssayQId, setActiveEssayQId] = useState<string | null>(null);
-  
-  // Exam list state
-  const [examList, setExamList] = useState<any[]>([]);
   
   // Canvas drawing state managed via useRef (optimized for high-performance rendering & diagram features)
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -327,53 +325,6 @@ export default function PhysicsArena() {
       fetchExamFromCloud();
     }
   }, []);
-
-  // Tải danh sách đề khi vào tab ma trận hoặc khi cần
-  useEffect(() => {
-    if (tab === "matrix") {
-      loadExamList();
-    }
-  }, [tab]);
-
-  async function loadExamList() {
-    if (!supabase) return;
-    const { data, error } = await supabase
-        .from('exams')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-    if (error) {
-        console.error('Lỗi khi tải danh sách đề:', error.message);
-        return;
-    }
-
-    setExamList(data || []);
-    
-    const tbody = document.getElementById('exam-table-body');
-    if (!tbody) return;
-
-    tbody.innerHTML = '';
-    data.forEach((exam, index) => {
-        // Tạo đường link liên kết tới đề thi
-        const examCode = exam.id || exam.exam_code;
-        const examLink = `${window.location.origin}/?exam=${examCode}`;
-
-        const row = `
-            <tr>
-                <td style="text-align: center;">${index + 1}</td>
-                <td style="text-align: center;"><b>${examCode}</b></td>
-                <td>${exam.title || 'Đề kiểm tra KHTN'}</td>
-                <td style="text-align: center;">${exam.duration || 15} phút</td>
-                <td style="text-align: center;">
-                    <button onclick="navigator.clipboard.writeText('${examLink}'); alert('Đã sao chép link đề ${examCode}!');" style="margin-right: 5px;">Copy Link</button>
-                    <a href="${examLink}" target="_blank">Làm thử</a>
-                </td>
-            </tr>
-        `;
-        tbody.innerHTML += row;
-    });
-  }
-
   const autoScore = useMemo(() => exam.reduce((sum, q) => sum + getQuestionAutoScore(q, answers[q.id]), 0), [exam, answers]);
   const essayTotalScore = Object.values(essayScores).reduce((a, b) => a + b, 0);
   const finalScore = autoScore + essayTotalScore;
@@ -418,6 +369,7 @@ export default function PhysicsArena() {
       };
     });
   }, [submitted, exam, answers]);
+
   // AI Question Generation Simulation / Logic Function
   async function handleAIGenerate() {
     setIsGeneratingAi(true);
@@ -491,6 +443,7 @@ export default function PhysicsArena() {
       setNotice(`🤖 AI đã soạn thành công ${aiCount} câu hỏi theo chủ đề "${aiTopic}"!`);
     }, 800);
   }
+
   async function handleStudentLookup() {
     if (!lookupExamCode.trim() || !lookupStudentName.trim()) {
       alert("Vui lòng nhập đầy đủ Mã đề thi và Họ và tên học sinh để tra cứu!");
@@ -582,7 +535,6 @@ export default function PhysicsArena() {
     } else {
       const shareLink = `${window.location.origin}/?exam=${examCodeId.trim()}`;
       prompt(`Đã lưu và xuất link thành công cho mã đề [${examCodeId.trim()}]! Thầy hãy copy đường link sau gửi cho học sinh:`, shareLink);
-      loadExamList();
     }
   }
   function updateMatrix(sec: Section, d: Difficulty, value: number) {
@@ -968,6 +920,7 @@ export default function PhysicsArena() {
                     </button>
                   )}
                 </div>
+
                 {aiGeneratedQuestions.length > 0 && (
                   <div>
                     <h3 style={{ fontSize: "15px", color: "#0f766e", marginBottom: "12px" }}>Kết quả AI vừa biên soạn ({aiGeneratedQuestions.length} câu):</h3>
@@ -994,6 +947,7 @@ export default function PhysicsArena() {
                 )}
               </div>
             )}
+
             {tab === "matrix" && (
               <div>
                 <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
@@ -1034,41 +988,6 @@ export default function PhysicsArena() {
                     ))}
                   </div>
                 ))}
-
-                {/* Đoạn code mới hiển thị danh sách đề đã tạo */}
-                <div className="exam-list-section" style={{ marginTop: "20px" }}>
-                    <h3>Danh sách đề đã tạo</h3>
-                    <table border={1} cellPadding={8} style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead>
-                            <tr>
-                                <th>STT</th>
-                                <th>Mã đề</th>
-                                <th>Tên đề</th>
-                                <th>Thời gian</th>
-                                <th>Thao tác</th>
-                            </tr>
-                        </thead>
-                        <tbody id="exam-table-body">
-                            {/* Dữ liệu đề thi sẽ tự động đổ vào đây */}
-                            {examList.map((exam, index) => {
-                                const examCode = exam.id || exam.exam_code;
-                                const examLink = `${window.location.origin}/?exam=${examCode}`;
-                                return (
-                                    <tr key={examCode || index}>
-                                        <td style={{ textAlign: 'center' }}>{index + 1}</td>
-                                        <td style={{ textAlign: 'center' }}><b>{examCode}</b></td>
-                                        <td>{exam.title || 'Đề kiểm tra KHTN'}</td>
-                                        <td style={{ textAlign: 'center' }}>{exam.duration || 15} phút</td>
-                                        <td style={{ textAlign: 'center' }}>
-                                            <button onClick={() => { navigator.clipboard.writeText(examLink); alert(`Đã sao chép link đề ${examCode}!`); }} style={{ marginRight: '5px' }}>Copy Link</button>
-                                            <a href={examLink} target="_blank" rel="noreferrer">Làm thử</a>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
               </div>
             )}
             {tab === "exam" && (
@@ -1735,6 +1654,66 @@ export default function PhysicsArena() {
             </div>
           ) : (
             <div style={{ padding: "10px 0" }}>
+              <div style={{ textAlign: "center", padding: "10px 10px 22px" }}>
+                <h2 style={{ color: "#0f766e", marginBottom: "6px" }}>🎉 Hoàn thành bài thi!</h2>
+                <p style={{ color: "#64748b", marginTop: 0 }}>Học sinh có thể xem lại điểm số và toàn bộ bài làm chi tiết của mình dưới đây.</p>
+                <div style={{ display: "flex", justifyContent: "center", gap: "12px", flexWrap: "wrap", marginTop: "14px" }}>
+                  <div style={{ background: "#f0fdf4", border: "1px solid #5eead4", padding: "14px 20px", borderRadius: "10px", minWidth: "190px" }}>
+                    <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>ĐIỂM TRẮC NGHIỆM</div>
+                    <strong style={{ fontSize: "24px", color: "#0f766e" }}>{autoScore.toFixed(2)}</strong>
+                  </div>
+                  <div style={{ background: "#eff6ff", border: "1px solid #93c5fd", padding: "14px 20px", borderRadius: "10px", minWidth: "190px" }}>
+                    <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>TỔNG ĐIỂM HIỆN TẠI</div>
+                    <strong style={{ fontSize: "24px", color: "#1d4ed8" }}>{finalScore.toFixed(2)}</strong>
+                  </div>
+                </div>
+              </div>
+              {/* Enhanced Review Filters */}
+              <div style={{ display: "flex", gap: "8px", margin: "20px 0", flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ fontSize: "13px", fontWeight: "700", color: "#0f766e" }}>Lọc kết quả xem lại:</span>
+                {(["all", "correct", "incorrect", "unanswered"] as const).map(f => {
+                  const labels = { all: "Tất cả", correct: "Đúng", incorrect: "Sai", unanswered: "Chưa làm" };
+                  return (
+                    <button
+                      key={f}
+                      onClick={() => setReviewFilter(f)}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: "6px",
+                        border: reviewFilter === f ? "2px solid #0d9488" : "1px solid #cbd5e1",
+                        background: reviewFilter === f ? "#ccfbf1" : "#f8fafc",
+                        fontWeight: "700",
+                        fontSize: "12px",
+                        color: "#0f766e",
+                        cursor: "pointer"
+                      }}
+                    >
+                      {labels[f]}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ marginTop: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
+                <h3 style={{ fontSize: "16px", fontWeight: "800", color: "#0f766e" }}>Chi tiết bài làm và đáp án:</h3>
+                {submissionDetails
+                  .filter(item => {
+                    if (reviewFilter === "correct") return item.isCorrect;
+                    if (reviewFilter === "incorrect") return !item.isCorrect && !item.isUnanswered && item.question.section !== "ESSAY";
+                    if (reviewFilter === "unanswered") return item.isUnanswered;
+                    return true;
+                  })
+                  .map((item, idx) => (
+                    <div key={idx} style={{ background: "#f8fafc", padding: "14px", borderRadius: "8px", border: "1px solid #cbd5e1" }}>
+                      <div style={{ fontWeight: "700", color: "#0f766e", marginBottom: "4px", fontSize: "13px" }}>
+                        {item.questionText} ({item.question.points}đ)
+                      </div>
+                      <div style={{ fontSize: "13px", color: "#334155" }}>
+                        <div>- Bạn chọn/trả lời: <b>{item.studentAnswer}</b></div>
+                        {item.question.section !== "ESSAY" && <div>- Đáp án chuẩn: <b style={{ color: "#059669" }}>{item.correctAnswer}</b></div>}
+                      </div>
+                    </div>
+                  ))}
+              </div>
             </div>
           ))}
         </section>
