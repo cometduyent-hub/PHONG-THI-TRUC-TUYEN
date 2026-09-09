@@ -215,12 +215,12 @@ function parseRow(r: Record<string, any>): Question {
 }
 export default function PhysicsArena() {
   const [mode, setMode] = useState<"teacher" | "student">("teacher");
-  const [tab, setTab] = useState<"bank" | "matrix" | "exam" | "grading" | "stats">("bank");
+  const [tab, setTab] = useState<"bank" | "matrix" | "exam" | "grading" | "stats" | "ai_gen">("bank");
   const [questions, setQuestions] = useState<Question[]>(seed);
   const [matrix, setMatrix] = useState<Matrix>(defaultMatrix);
   const [examMinutes, setExamMinutes] = useState<number>(45); 
   const [exam, setExam] = useState<Question[]>([]);
-  const [examCodeId, setExamCodeId] = useState<string>("");
+  const [examCodeId, setExamCodeId] = useState<string>("KHTN_" + Math.random().toString(36).substring(2, 10).toUpperCase());
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const answersRef = useRef<Record<string, any>>({});
   const examRef = useRef<Question[]>([]);
@@ -235,11 +235,33 @@ export default function PhysicsArena() {
   const [antiCheatWarnings, setAntiCheatWarnings] = useState(0);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   
+  // AI Question Generation States
+  const [aiTopic, setAiTopic] = useState("Trao đổi chất và chuyển hóa năng lượng ở sinh vật");
+  const [aiGrade, setAiGrade] = useState("7");
+  const [aiSection, setAiSection] = useState<Section>("MCQ");
+  const [aiCount, setAiCount] = useState<number>(3);
+  const [aiGeneratedQuestions, setAiGeneratedQuestions] = useState<Question[]>([]);
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  // Student Review & Lookup state additions
+  const [studentViewTab, setStudentViewTab] = useState<"take" | "lookup">("take");
+  const [lookupExamCode, setLookupExamCode] = useState("");
+  const [lookupStudentName, setLookupStudentName] = useState("");
+  const [lookupResult, setLookupResult] = useState<Submission | null>(null);
+  const [lookupQuestions, setLookupQuestions] = useState<Question[]>([]);
+  const [reviewFilter, setReviewFilter] = useState<"all" | "correct" | "incorrect" | "unanswered">("all");
   const [viewingSubmission, setViewingSubmission] = useState<Submission | null>(null);
   const [showDrawingModal, setShowDrawingModal] = useState(false);
   const [activeEssayQId, setActiveEssayQId] = useState<string | null>(null);
+  
+  // Exam list state
+  const [examList, setExamList] = useState<any[]>([]);
+  
+  // Canvas drawing state managed via useRef (optimized for high-performance rendering & diagram features)
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
+  const isDrawingRef = useRef(false);
+  const drawColorRef = useRef("#0f766e");
+  const drawWidthRef = useRef(2);
+  const toolRef = useRef<"pen" | "eraser">("pen");
   const essayTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const deadlineRef = useRef<number | null>(null);
   const submitExamRef = useRef<() => void>(() => undefined);
@@ -305,6 +327,53 @@ export default function PhysicsArena() {
       fetchExamFromCloud();
     }
   }, []);
+
+  // Tải danh sách đề khi vào tab ma trận hoặc khi cần
+  useEffect(() => {
+    if (tab === "matrix") {
+      loadExamList();
+    }
+  }, [tab]);
+
+  async function loadExamList() {
+    if (!supabase) return;
+    const { data, error } = await supabase
+        .from('exams')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Lỗi khi tải danh sách đề:', error.message);
+        return;
+    }
+
+    setExamList(data || []);
+    
+    const tbody = document.getElementById('exam-table-body');
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+    data.forEach((exam, index) => {
+        // Tạo đường link liên kết tới đề thi
+        const examCode = exam.id || exam.exam_code;
+        const examLink = `${window.location.origin}/?exam=${examCode}`;
+
+        const row = `
+            <tr>
+                <td style="text-align: center;">${index + 1}</td>
+                <td style="text-align: center;"><b>${examCode}</b></td>
+                <td>${exam.title || 'Đề kiểm tra KHTN'}</td>
+                <td style="text-align: center;">${exam.duration || 15} phút</td>
+                <td style="text-align: center;">
+                    <button onclick="navigator.clipboard.writeText('${examLink}'); alert('Đã sao chép link đề ${examCode}!');" style="margin-right: 5px;">Copy Link</button>
+                    <a href="${examLink}" target="_blank">Làm thử</a>
+                </td>
+            </tr>
+        `;
+        tbody.innerHTML += row;
+    });
+  }
+
   const autoScore = useMemo(() => exam.reduce((sum, q) => sum + getQuestionAutoScore(q, answers[q.id]), 0), [exam, answers]);
   const essayTotalScore = Object.values(essayScores).reduce((a, b) => a + b, 0);
   const finalScore = autoScore + essayTotalScore;
@@ -315,33 +384,148 @@ export default function PhysicsArena() {
       let studentAnswerStr = "";
       let correctAnswerStr = "";
       let isCorrect = false;
+      let isUnanswered = false;
       if (q.section === "MCQ") {
         studentAnswerStr = ans || "Chưa chọn";
         correctAnswerStr = q.correctOption || "";
         isCorrect = ans === q.correctOption;
+        isUnanswered = !ans;
       } else if (q.section === "TF") {
         studentAnswerStr = q.subTfs?.map(sub => `${sub.id.toUpperCase()}: ${ans?.[sub.id] === true ? 'Đúng' : ans?.[sub.id] === false ? 'Sai' : 'Chưa làm'}`).join(", ") || "";
         correctAnswerStr = q.subTfs?.map(sub => `${sub.id.toUpperCase()}: ${sub.key ? 'Đúng' : 'Sai'}`).join(", ") || "";
         const score = getQuestionAutoScore(q, ans);
         isCorrect = score === q.points;
+        isUnanswered = !ans || Object.keys(ans).length === 0;
       } else if (q.section === "SHORT") {
         studentAnswerStr = ans !== undefined && ans !== "" ? String(ans) : "Chưa trả lời";
         correctAnswerStr = q.shortAnswer || "";
         const score = getQuestionAutoScore(q, ans);
         isCorrect = score === q.points;
+        isUnanswered = ans === undefined || ans === "" || String(ans).trim() === "";
       } else if (q.section === "ESSAY") {
         studentAnswerStr = ans || "Không làm";
         correctAnswerStr = "(Chấm tự luận bởi giáo viên)";
         isCorrect = false;
+        isUnanswered = !ans;
       }
       return {
+        question: q,
         questionText: q.content,
         studentAnswer: studentAnswerStr,
         correctAnswer: correctAnswerStr,
-        isCorrect
+        isCorrect,
+        isUnanswered
       };
     });
   }, [submitted, exam, answers]);
+  // AI Question Generation Simulation / Logic Function
+  async function handleAIGenerate() {
+    setIsGeneratingAi(true);
+    setTimeout(() => {
+      const mockGenerated: Question[] = [];
+      for (let i = 1; i <= aiCount; i++) {
+        const id = "AI_GEN_" + Date.now() + "_" + i;
+        if (aiSection === "MCQ") {
+          mockGenerated.push({
+            id,
+            section: "MCQ",
+            subject: "Khoa học tự nhiên",
+            grade: aiGrade,
+            topic: aiTopic,
+            difficulty: "TH",
+            content: `[AI tạo] Câu hỏi trắc nghiệm số ${i} về chủ đề "${aiTopic}" (KHTN lớp ${aiGrade})?`,
+            options: [
+              { key: "A", text: "Đáp án đúng chuẩn khoa học cho câu hỏi này" },
+              { key: "B", text: "Phương án nhiễu thứ nhất thường gặp" },
+              { key: "C", text: "Phương án nhiễu thứ hai" },
+              { key: "D", text: "Phương án nhiễu thứ ba" }
+            ],
+            correctOption: "A",
+            points: 0.25
+          });
+        } else if (aiSection === "TF") {
+          mockGenerated.push({
+            id,
+            section: "TF",
+            subject: "Khoa học tự nhiên",
+            grade: aiGrade,
+            topic: aiTopic,
+            difficulty: "TH",
+            content: `[AI tạo] Nhận định các phát biểu sau về chủ đề "${aiTopic}":`,
+            subTfs: [
+              { id: "a", content: "Phát biểu thứ nhất mô tả đúng bản chất hiện tượng.", key: true, difficulty: "NB" },
+              { id: "b", content: "Phát biểu thứ hai có chứa chi tiết sai về mặt định lượng.", key: false, difficulty: "TH" },
+              { id: "c", content: "Phát biểu thứ ba phản ánh đúng ứng dụng thực tế.", key: true, difficulty: "VD" },
+              { id: "d", content: "Phát biểu thứ tư là kết luận chưa chính xác.", key: false, difficulty: "TH" }
+            ],
+            points: 1.0
+          });
+        } else if (aiSection === "SHORT") {
+          mockGenerated.push({
+            id,
+            section: "SHORT",
+            subject: "Khoa học tự nhiên",
+            grade: aiGrade,
+            topic: aiTopic,
+            difficulty: "VD",
+            content: `[AI tạo] Tính toán hoặc xác định giá trị ngắn gọn cho bài toán thuộc chủ đề "${aiTopic}":`,
+            shortAnswer: "100",
+            tolerance: 0.1,
+            points: 0.5
+          });
+        } else {
+          mockGenerated.push({
+            id,
+            section: "ESSAY",
+            subject: "Khoa học tự nhiên",
+            grade: aiGrade,
+            topic: aiTopic,
+            difficulty: "VDC",
+            content: `[AI tạo] Trình bày bản chất, ý nghĩa và giải thích chi tiết hiện tượng liên quan đến "${aiTopic}".`,
+            points: 2.0
+          });
+        }
+      }
+      setAiGeneratedQuestions(mockGenerated);
+      setIsGeneratingAi(false);
+      setNotice(`🤖 AI đã soạn thành công ${aiCount} câu hỏi theo chủ đề "${aiTopic}"!`);
+    }, 800);
+  }
+  async function handleStudentLookup() {
+    if (!lookupExamCode.trim() || !lookupStudentName.trim()) {
+      alert("Vui lòng nhập đầy đủ Mã đề thi và Họ và tên học sinh để tra cứu!");
+      return;
+    }
+    if (!supabase) {
+      alert("Chưa cấu hình Supabase kết nối cơ sở dữ liệu.");
+      return;
+    }
+    const { data: subData, error: subError } = await supabase
+      .from("student_submissions")
+      .select("*")
+      .eq("exam_id", lookupExamCode.trim())
+      .ilike("student_name", `%${lookupStudentName.trim()}%`)
+      .order("submitted_at", { ascending: false })
+      .limit(1);
+    if (subError || !subData || subData.length === 0) {
+      alert("Không tìm thấy bài nộp phù hợp với thông tin đã nhập!");
+      setLookupResult(null);
+      return;
+    }
+    const foundSub = subData[0] as Submission;
+    setLookupResult(foundSub);
+    const { data: examData, error: examError } = await supabase
+      .from("exams")
+      .select("questions_data")
+      .eq("id", lookupExamCode.trim())
+      .single();
+    if (!examError && examData?.questions_data) {
+      setLookupQuestions(examData.questions_data as Question[]);
+    } else {
+      setLookupQuestions([]);
+    }
+    setNotice("Đã tìm thấy thông tin bài làm của học sinh!");
+  }
   function generateExam() {
     const selected: Question[] = [];
     (Object.keys(matrix) as Section[]).forEach(sec => {
@@ -383,10 +567,12 @@ export default function PhysicsArena() {
       alert("Chưa có đề thi nào được tạo! Thầy hãy bấm 'Tạo đề thi' trước.");
       return;
     }
-    const examCode = "KHTN_" + crypto.randomUUID().split("-").join("").substring(0, 8).toUpperCase();
-    setExamCodeId(examCode);
-    const { error } = await supabase.from('exams').insert([{ 
-      id: examCode, 
+    if (!examCodeId.trim()) {
+      alert("Vui lòng nhập mã đề thi hợp lệ!");
+      return;
+    }
+    const { error } = await supabase.from('exams').upsert([{ 
+      id: examCodeId.trim(), 
       title: "Kiểm tra Khoa học tự nhiên", 
       duration: examMinutes,
       questions_data: exam 
@@ -394,8 +580,9 @@ export default function PhysicsArena() {
     if (error) {
       alert("Lỗi khi lưu đề lên hệ thống: " + error.message);
     } else {
-      const shareLink = `${window.location.origin}/?exam=${examCode}`;
-      prompt("Đã xuất link thành công! Thầy hãy copy đường link sau gửi cho học sinh:", shareLink);
+      const shareLink = `${window.location.origin}/?exam=${examCodeId.trim()}`;
+      prompt(`Đã lưu và xuất link thành công cho mã đề [${examCodeId.trim()}]! Thầy hãy copy đường link sau gửi cho học sinh:`, shareLink);
+      loadExamList();
     }
   }
   function updateMatrix(sec: Section, d: Difficulty, value: number) {
@@ -521,6 +708,10 @@ export default function PhysicsArena() {
   }
   async function submitExam() {
     if (submitted) return;
+    if (!studentName.trim()) {
+      alert("Vui lòng điền họ và tên học sinh trước khi nộp bài!");
+      return;
+    }
     const currentAnswers = answersRef.current;
     const currentExam = examRef.current;
     const score = currentExam.reduce((sum, q) => sum + getQuestionAutoScore(q, currentAnswers[q.id]), 0);
@@ -532,7 +723,7 @@ export default function PhysicsArena() {
       return;
     }
     const { error } = await supabase.from("student_submissions").insert([{
-      exam_id: examCodeId || "LOCAL_TEST",
+      exam_id: examCodeId.trim() || "LOCAL_TEST",
       student_name: studentName.trim(),
       student_class: studentClass.trim(),
       student_school: studentSchool.trim(),
@@ -557,7 +748,7 @@ export default function PhysicsArena() {
     }
     const { data, error } = await supabase.from("student_submissions")
       .select("id, exam_id, student_name, student_class, student_school, auto_score, essay_score, final_score, answers_data, submitted_at")
-      .eq("exam_id", examCodeId)
+      .eq("exam_id", examCodeId.trim())
       .order("submitted_at", { ascending: false });
     if (error) { setNotice("Không tải được kết quả: " + error.message); return; }
     setSubmissions((data || []) as Submission[]);
@@ -572,7 +763,7 @@ export default function PhysicsArena() {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(rows);
     XLSX.utils.book_append_sheet(wb, ws, "Kết quả");
-    XLSX.writeFile(wb, `Ket_qua_${examCodeId || "KHTN"}.xlsx`);
+    XLSX.writeFile(wb, `Ket_qua_${examCodeId.trim() || "KHTN"}.xlsx`);
   }
   return (
     <main className="app-shell" style={{ 
@@ -623,6 +814,7 @@ export default function PhysicsArena() {
             <div className="side-title" style={{ fontSize: "11px", fontWeight: "700", color: "#0d9488", marginBottom: "12px", letterSpacing: "1px" }}>BẢNG ĐIỀU KHIỂN KHTN</div>
             {[
               ["bank", "📚", "Ngân hàng câu hỏi"],
+              ["ai_gen", "🤖", "AI Tạo đề thông minh"],
               ["matrix", "🧩", "Ma trận & tạo đề"],
               ["exam", "📝", "Xem & Sửa đề"],
               ["grading", "✍️", "Chấm bài tự luận"],
@@ -698,11 +890,125 @@ export default function PhysicsArena() {
                 </div>
               </div>
             )}
+            
+            {/* TÍNH NĂNG MỚI: AI TẠO ĐỀ THÔNG MINH */}
+            {tab === "ai_gen" && (
+              <div>
+                <div style={{ marginBottom: "20px" }}>
+                  <h2 style={{ fontSize: "20px", margin: 0, color: "#0f766e" }}>🤖 AI Tạo đề thông minh từ ứng dụng giáo viên</h2>
+                  <p style={{ color: "#64748b", margin: "4px 0 0 0", fontSize: "13px" }}>Hệ thống trợ lý AI sẽ tự động biên soạn câu hỏi chuẩn xác bám sát chương trình KHTN dựa theo chủ đề bạn yêu cầu.</p>
+                </div>
+                <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "10px", border: "1px solid #cbd5e1", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e", display: "block", marginBottom: "6px" }}>Chủ đề / Nội dung bài học:</label>
+                    <input 
+                      type="text" 
+                      value={aiTopic} 
+                      onChange={e => setAiTopic(e.target.value)} 
+                      placeholder="VD: Định luật phản xạ ánh sáng, Tốc độ chuyển động..." 
+                      style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }} 
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e", display: "block", marginBottom: "6px" }}>Khối lớp:</label>
+                    <select 
+                      value={aiGrade} 
+                      onChange={e => setAiGrade(e.target.value)} 
+                      style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", background: "#fff" }}
+                    >
+                      <option value="6">Lớp 6</option>
+                      <option value="7">Lớp 7</option>
+                      <option value="8">Lớp 8</option>
+                      <option value="9">Lớp 9</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e", display: "block", marginBottom: "6px" }}>Dạng câu hỏi muốn tạo:</label>
+                    <select 
+                      value={aiSection} 
+                      onChange={e => setAiSection(e.target.value as Section)} 
+                      style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", background: "#fff" }}
+                    >
+                      <option value="MCQ">Trắc nghiệm nhiều lựa chọn</option>
+                      <option value="TF">Trắc nghiệm Đúng / Sai</option>
+                      <option value="SHORT">Trắc nghiệm trả lời ngắn</option>
+                      <option value="ESSAY">Tự luận</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e", display: "block", marginBottom: "6px" }}>Số lượng câu hỏi:</label>
+                    <input 
+                      type="number" 
+                      min="1" 
+                      max="10" 
+                      value={aiCount} 
+                      onChange={e => setAiCount(Number(e.target.value))} 
+                      style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }} 
+                    />
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: "10px", marginBottom: "24px" }}>
+                  <button 
+                    onClick={handleAIGenerate} 
+                    disabled={isGeneratingAi}
+                    style={{ background: "#0d9488", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "8px", fontWeight: "700", cursor: "pointer", fontSize: "13px" }}
+                  >
+                    {isGeneratingAi ? "⏳ Đang tổng hợp từ AI..." : "✨ Yêu cầu AI soạn câu hỏi"}
+                  </button>
+                  {aiGeneratedQuestions.length > 0 && (
+                    <button 
+                      onClick={() => {
+                        setQuestions(prev => [...aiGeneratedQuestions, ...prev]);
+                        setNotice(`Đã thêm ${aiGeneratedQuestions.length} câu hỏi do AI tạo vào Ngân hàng!`);
+                        setAiGeneratedQuestions([]);
+                      }}
+                      style={{ background: "#059669", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "8px", fontWeight: "700", cursor: "pointer", fontSize: "13px" }}
+                    >
+                      📥 Thêm tất cả vào Ngân hàng câu hỏi
+                    </button>
+                  )}
+                </div>
+                {aiGeneratedQuestions.length > 0 && (
+                  <div>
+                    <h3 style={{ fontSize: "15px", color: "#0f766e", marginBottom: "12px" }}>Kết quả AI vừa biên soạn ({aiGeneratedQuestions.length} câu):</h3>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                      {aiGeneratedQuestions.map((q, idx) => (
+                        <div key={q.id} style={{ background: "#fdfefe", border: "1px solid #2dd4bf", padding: "14px", borderRadius: "8px" }}>
+                          <div style={{ fontWeight: "700", color: "#0f766e", marginBottom: "4px", fontSize: "13px" }}>Câu {idx + 1} [{sectionLabel[q.section]}]</div>
+                          <div style={{ fontSize: "13px", color: "#334155", marginBottom: "6px" }}>{q.content}</div>
+                          {q.section === "MCQ" && q.options && (
+                            <div style={{ fontSize: "12px", color: "#64748b", display: "flex", flexDirection: "column", gap: "2px" }}>
+                              {q.options.map(o => <span key={o.key}><b>{o.key}.</b> {o.text} {o.key === q.correctOption ? " (Đúng)" : ""}</span>)}
+                            </div>
+                          )}
+                          {q.section === "TF" && q.subTfs && (
+                            <div style={{ fontSize: "12px", color: "#64748b", display: "flex", flexDirection: "column", gap: "2px" }}>
+                              {q.subTfs.map(s => <span key={s.id}><b>{s.id.toUpperCase()}.</b> {s.content} - Đáp án: <b>{s.key ? "Đúng" : "Sai"}</b></span>)}
+                            </div>
+                          )}
+                          {q.section === "SHORT" && <div style={{ fontSize: "12px", color: "#059669" }}>Đáp án ngắn chuẩn: <b>{q.shortAnswer}</b></div>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             {tab === "matrix" && (
               <div>
                 <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
-                  <div><h2 style={{ fontSize: "20px", margin: 0, color: "#0f766e" }}>Ma trận & Tạo đề</h2><p style={{ color: "#64748b", margin: 0, fontSize: "13px" }}>Cấu hình số lượng câu hỏi, phân mức độ nhận thức và chọn thời gian bài thi.</p></div>
+                  <div><h2 style={{ fontSize: "20px", margin: 0, color: "#0f766e" }}>Ma trận & Tạo đề</h2><p style={{ color: "#64748b", margin: 0, fontSize: "13px" }}>Cấu hình số lượng câu hỏi, phân mức độ nhận thức, mã đề và thời gian bài thi.</p></div>
                   <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "#f0fdf4", padding: "6px 12px", borderRadius: "8px", border: "1px solid #5eead4" }}>
+                      <span style={{ fontSize: "13px", fontWeight: "700", color: "#0f766e" }}>🏷️ Mã đề:</span>
+                      <input 
+                        type="text" 
+                        value={examCodeId} 
+                        onChange={e => setExamCodeId(e.target.value)} 
+                        placeholder="Nhập mã đề (VD: DE_01)" 
+                        style={{ padding: "4px 8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontWeight: "600", width: "130px" }} 
+                      />
+                    </div>
                     <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "#f0fdf4", padding: "6px 12px", borderRadius: "8px", border: "1px solid #5eead4" }}>
                       <span style={{ fontSize: "13px", fontWeight: "700", color: "#0f766e" }}>⏱️ Thời gian:</span>
                       <select value={examMinutes} onChange={e => setExamMinutes(Number(e.target.value))} style={{ padding: "4px 8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontWeight: "600" }}>
@@ -728,12 +1034,47 @@ export default function PhysicsArena() {
                     ))}
                   </div>
                 ))}
+
+                {/* Đoạn code mới hiển thị danh sách đề đã tạo */}
+                <div className="exam-list-section" style={{ marginTop: "20px" }}>
+                    <h3>Danh sách đề đã tạo</h3>
+                    <table border={1} cellPadding={8} style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                            <tr>
+                                <th>STT</th>
+                                <th>Mã đề</th>
+                                <th>Tên đề</th>
+                                <th>Thời gian</th>
+                                <th>Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="exam-table-body">
+                            {/* Dữ liệu đề thi sẽ tự động đổ vào đây */}
+                            {examList.map((exam, index) => {
+                                const examCode = exam.id || exam.exam_code;
+                                const examLink = `${window.location.origin}/?exam=${examCode}`;
+                                return (
+                                    <tr key={examCode || index}>
+                                        <td style={{ textAlign: 'center' }}>{index + 1}</td>
+                                        <td style={{ textAlign: 'center' }}><b>{examCode}</b></td>
+                                        <td>{exam.title || 'Đề kiểm tra KHTN'}</td>
+                                        <td style={{ textAlign: 'center' }}>{exam.duration || 15} phút</td>
+                                        <td style={{ textAlign: 'center' }}>
+                                            <button onClick={() => { navigator.clipboard.writeText(examLink); alert(`Đã sao chép link đề ${examCode}!`); }} style={{ marginRight: '5px' }}>Copy Link</button>
+                                            <a href={examLink} target="_blank" rel="noreferrer">Làm thử</a>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
               </div>
             )}
             {tab === "exam" && (
               <div>
                 <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-                  <div><h2 style={{ fontSize: "20px", margin: 0, color: "#0f766e" }}>Xem & Chỉnh sửa đề thi hiện tại</h2><p style={{ color: "#64748b", margin: 0, fontSize: "13px" }}>Quản lý thang điểm, nội dung, Media và cấu hình mức độ từng ý Đúng/Sai.</p></div>
+                  <div><h2 style={{ fontSize: "20px", margin: 0, color: "#0f766e" }}>Xem & Chỉnh sửa đề thi hiện tại ({examCodeId})</h2><p style={{ color: "#64748b", margin: 0, fontSize: "13px" }}>Quản lý thang điểm, nội dung, Media và cấu hình mức độ từng ý Đúng/Sai.</p></div>
                   <button onClick={generateExam} style={{ background: "#f0fdf4", border: "1px solid #5eead4", padding: "8px 14px", borderRadius: "8px", cursor: "pointer", fontWeight: "600", color: "#0f766e" }}>🔄 Tạo đề mới</button>
                 </div>
                 {exam.length === 0 ? <div style={{ textAlign: "center", padding: "30px", color: "#64748b" }}>Chưa có đề. Vui lòng vào Ma trận & tạo đề.</div> : (
@@ -859,13 +1200,20 @@ export default function PhysicsArena() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <div><h2 style={{ fontSize: "20px", color: "#0f766e", marginBottom: "6px" }}>Chấm bài & Kết quả</h2>
                   <p style={{ color: "#64748b", fontSize: "13px" }}>Tải kết quả từ Supabase, chấm tự luận, xem lại bài làm chi tiết và xuất Excel.</p></div>
-                  <div style={{ display: "flex", gap: 8 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <input 
+                      type="text" 
+                      value={examCodeId} 
+                      onChange={e => setExamCodeId(e.target.value)} 
+                      placeholder="Mã đề cần xem" 
+                      style={{ padding: "8px", borderRadius: 8, border: "1px solid #cbd5e1", width: "130px", fontSize: "13px", fontWeight: "600" }} 
+                    />
                     <button onClick={loadSubmissions} style={{ padding: "9px 12px", borderRadius: 8, border: "1px solid #5eead4", background: "#f0fdf4", cursor: "pointer", fontWeight: "600", color: "#0f766e" }}>🔄 Tải kết quả</button>
                     <button onClick={exportSubmissionsExcel} style={{ padding: "9px 12px", borderRadius: 8, border: "none", background: "#0284c7", color: "#fff", cursor: "pointer", fontWeight: "600" }}>📊 Xuất Excel</button>
                   </div>
                 </div>
                 <div style={{ marginTop: 18, background: "#f8fafc", padding: 16, borderRadius: 8, border: "1px solid #cbd5e1" }}>
-                  <b>Đề hiện tại: {examCodeId || "chưa xuất mã"}</b> · Tổng số bài đã nộp: <b>{submissions.length}</b>
+                  <b>Đề hiện tại: {examCodeId}</b> · Tổng số bài đã nộp: <b>{submissions.length}</b>
                 </div>
                 {submissions.length > 0 && (
                   <div style={{ overflowX: "auto", marginTop: 16 }}>
@@ -980,11 +1328,114 @@ export default function PhysicsArena() {
         </section>
       ) : (
         <section style={{ maxWidth: "900px", margin: "24px auto", background: "#fff", padding: "30px", borderRadius: "14px", border: "1px solid #cbd5e1", boxShadow: "0 4px 12px -2px rgba(0,0,0,0.05)" }}>
-          {!submitted ? (
+          {/* Student Sub-navigation: Take Exam vs Lookup & Review */}
+          <div style={{ display: "flex", gap: "10px", marginBottom: "20px", borderBottom: "1px solid #cbd5e1", paddingBottom: "12px" }}>
+            <button 
+              onClick={() => setStudentViewTab("take")}
+              style={{ padding: "8px 16px", borderRadius: "8px", border: studentViewTab === "take" ? "2px solid #0d9488" : "1px solid #cbd5e1", background: studentViewTab === "take" ? "#ccfbf1" : "#f8fafc", fontWeight: "700", color: "#0f766e", cursor: "pointer" }}
+            >
+              📝 Làm bài kiểm tra
+            </button>
+            <button 
+              onClick={() => setStudentViewTab("lookup")}
+              style={{ padding: "8px 16px", borderRadius: "8px", border: studentViewTab === "lookup" ? "2px solid #0d9488" : "1px solid #cbd5e1", background: studentViewTab === "lookup" ? "#ccfbf1" : "#f8fafc", fontWeight: "700", color: "#0f766e", cursor: "pointer" }}
+            >
+              🔍 Tra cứu & Xem lại bài làm
+            </button>
+          </div>
+          {studentViewTab === "lookup" ? (
+            <div>
+              <h3 style={{ color: "#0f766e", marginBottom: "8px", fontSize: "18px" }}>Tra cứu kết quả & Xem lại bài làm chi tiết</h3>
+              <p style={{ color: "#64748b", fontSize: "13px", marginBottom: "20px" }}>Nhập Mã đề thi và Họ tên học sinh để tra cứu điểm số và xem lại đáp án chi tiết bất kỳ lúc nào.</p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: "10px", marginBottom: "20px", alignItems: "end" }}>
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e", display: "block", marginBottom: "4px" }}>Mã đề thi:</label>
+                  <input 
+                    type="text" 
+                    placeholder="Nhập mã đề (VD: KHTN_...)" 
+                    value={lookupExamCode} 
+                    onChange={e => setLookupExamCode(e.target.value)} 
+                    style={{ width: "100%", padding: "10px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px" }} 
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e", display: "block", marginBottom: "4px" }}>Họ và tên học sinh:</label>
+                  <input 
+                    type="text" 
+                    placeholder="Nhập họ và tên đầy đủ" 
+                    value={lookupStudentName} 
+                    onChange={e => setLookupStudentName(e.target.value)} 
+                    style={{ width: "100%", padding: "10px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px" }} 
+                  />
+                </div>
+                <button 
+                  onClick={handleStudentLookup}
+                  style={{ background: "#0d9488", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "6px", fontWeight: "700", cursor: "pointer", fontSize: "13px", height: "41px" }}
+                >
+                  Tra cứu ngay
+                </button>
+              </div>
+              {lookupResult && (
+                <div style={{ marginTop: "24px", border: "1px solid #5eead4", background: "#f0fdf4", padding: "20px", borderRadius: "10px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "2px solid #2dd4bf", paddingBottom: "12px", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+                    <div>
+                      <h4 style={{ margin: 0, color: "#0f766e", fontSize: "16px" }}>Kết quả bài làm: {lookupResult.student_name} ({lookupResult.student_class})</h4>
+                      <span style={{ fontSize: "12px", color: "#64748b" }}>Trường: {lookupResult.student_school || "Không rõ"} · Nộp lúc: {new Date(lookupResult.submitted_at).toLocaleString("vi-VN")}</span>
+                    </div>
+                    <div style={{ display: "flex", gap: "12px" }}>
+                      <div style={{ background: "#fff", padding: "6px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "12px" }}>
+                        Điểm TN: <b>{Number(lookupResult.auto_score || 0).toFixed(2)}đ</b>
+                      </div>
+                      <div style={{ background: "#ccfbf1", padding: "6px 12px", borderRadius: "6px", border: "1px solid #2dd4bf", fontSize: "12px", color: "#115e59", fontWeight: "700" }}>
+                        Tổng điểm: <b>{Number(lookupResult.final_score ?? lookupResult.auto_score ?? 0).toFixed(2)}đ</b>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: "14px", fontWeight: "800", color: "#0f766e", marginBottom: "12px" }}>Chi tiết các câu hỏi & Đáp án:</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                    {lookupQuestions.map((q, qIdx) => {
+                      const stuAns = lookupResult.answers_data?.[q.id];
+                      let isCorrect = false;
+                      let stuAnsStr = "";
+                      let correctAnsStr = "";
+                      if (q.section === "MCQ") {
+                        stuAnsStr = stuAns || "Chưa chọn";
+                        correctAnsStr = q.correctOption || "";
+                        isCorrect = stuAns === q.correctOption;
+                      } else if (q.section === "TF") {
+                        stuAnsStr = q.subTfs?.map(sub => `${sub.id.toUpperCase()}: ${stuAns?.[sub.id] === true ? 'Đúng' : stuAns?.[sub.id] === false ? 'Sai' : 'Chưa làm'}`).join(", ") || "";
+                        correctAnsStr = q.subTfs?.map(sub => `${sub.id.toUpperCase()}: ${sub.key ? 'Đúng' : 'Sai'}`).join(", ") || "";
+                        isCorrect = getQuestionAutoScore(q, stuAns) === q.points;
+                      } else if (q.section === "SHORT") {
+                        stuAnsStr = stuAns !== undefined && stuAns !== "" ? String(stuAns) : "Chưa trả lời";
+                        correctAnsStr = q.shortAnswer || "";
+                        isCorrect = getQuestionAutoScore(q, stuAns) === q.points;
+                      } else if (q.section === "ESSAY") {
+                        stuAnsStr = stuAns || "Không làm";
+                        correctAnsStr = "(Chấm tự luận bởi giáo viên)";
+                      }
+                      return (
+                        <div key={q.id} style={{ background: "#fff", padding: "14px", borderRadius: "8px", border: `1px solid ${q.section === 'ESSAY' ? '#cbd5e1' : (isCorrect ? '#86efac' : '#fca5a5')}` }}>
+                          <div style={{ fontWeight: "700", color: "#0f766e", marginBottom: "6px", fontSize: "13px" }}>
+                            Câu {qIdx + 1} ({sectionLabel[q.section]} - {q.points}đ)
+                          </div>
+                          <div style={{ marginBottom: "8px", fontSize: "13px", color: "#334155" }}>{q.content}</div>
+                          <div style={{ fontSize: "13px", background: "#f8fafc", padding: "8px", borderRadius: "6px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                            <div>- Bạn đã chọn / trả lời: <b style={{ color: q.section === 'ESSAY' ? '#0284c7' : (isCorrect ? '#059669' : '#dc2626') }}>{stuAnsStr}</b></div>
+                            {q.section !== 'ESSAY' && <div>- Đáp án chuẩn: <b style={{ color: "#059669" }}>{correctAnsStr}</b></div>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (!submitted ? (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "2px solid #0d9488", paddingBottom: "15px", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
                 <div>
-                  <h2 style={{ margin: 0, color: "#0f766e", fontSize: "20px" }}>Bài kiểm tra Khoa học tự nhiên</h2>
+                  <h2 style={{ margin: 0, color: "#0f766e", fontSize: "20px" }}>Bài kiểm tra Khoa học tự nhiên ({examCodeId})</h2>
                   <p style={{ margin: "4px 0 0 0", fontSize: "13px", color: "#64748b" }}>Điền thông tin và hoàn thành đầy đủ các phần câu hỏi bên dưới.</p>
                 </div>
                 <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
@@ -995,7 +1446,7 @@ export default function PhysicsArena() {
                 </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginBottom: "20px" }}>
-                <input type="text" placeholder="Họ và tên học sinh" value={studentName} onChange={e => setStudentName(e.target.value)} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
+                <input type="text" placeholder="Họ và tên học sinh (*)" value={studentName} onChange={e => setStudentName(e.target.value)} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
                 <input type="text" placeholder="Lớp (Ví dụ: 7A)" value={studentClass} onChange={e => setStudentClass(e.target.value)} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
                 <input type="text" placeholder="Trường học" value={studentSchool} onChange={e => setStudentSchool(e.target.value)} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
               </div>
@@ -1031,13 +1482,47 @@ export default function PhysicsArena() {
                       <strong>Bảng vẽ hình / Sơ đồ tư duy</strong>
                       <button onClick={() => setShowDrawingModal(false)} style={{ background: "none", border: "none", fontSize: "18px", cursor: "pointer" }}>✕</button>
                     </div>
+                    <div style={{ display: "flex", gap: "10px", marginBottom: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                      <label style={{ fontSize: "12px", fontWeight: "700" }}>Màu vẽ:</label>
+                      <input 
+                        type="color" 
+                        defaultValue="#0f766e" 
+                        onChange={(e) => { drawColorRef.current = e.target.value; }}
+                        style={{ border: "none", width: "30px", height: "24px", cursor: "pointer", background: "none" }}
+                      />
+                      <label style={{ fontSize: "12px", fontWeight: "700", marginLeft: "6px" }}>Độ dày:</label>
+                      <select 
+                        defaultValue="2" 
+                        onChange={(e) => { drawWidthRef.current = Number(e.target.value); }}
+                        style={{ padding: "2px 6px", borderRadius: "4px", border: "1px solid #cbd5e1", fontSize: "12px" }}
+                      >
+                        <option value="1">Mỏng (1px)</option>
+                        <option value="2">Vừa (2px)</option>
+                        <option value="4">Đậm (4px)</option>
+                        <option value="8">Rất đậm (8px)</option>
+                      </select>
+                      <button 
+                        type="button" 
+                        onClick={() => { toolRef.current = "pen"; }}
+                        style={{ padding: "4px 8px", background: "#f0fdf4", border: "1px solid #5eead4", borderRadius: "4px", fontSize: "12px", fontWeight: "600", cursor: "pointer" }}
+                      >
+                        ✏️ Bút vẽ
+                      </button>
+                      <button 
+                        type="button" 
+                        onClick={() => { toolRef.current = "eraser"; }}
+                        style={{ padding: "4px 8px", background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: "4px", fontSize: "12px", fontWeight: "600", cursor: "pointer" }}
+                      >
+                        🧹 Tẩy
+                      </button>
+                    </div>
                     <canvas 
                       ref={canvasRef}
                       width={480}
                       height={280}
                       style={{ border: "1px solid #cbd5e1", background: "#fdfefe", borderRadius: "6px", cursor: "crosshair", width: "100%" }}
                       onMouseDown={(e) => {
-                        setIsDrawing(true);
+                        isDrawingRef.current = true;
                         const canvas = canvasRef.current;
                         if (!canvas) return;
                         const ctx = canvas.getContext("2d");
@@ -1047,18 +1532,21 @@ export default function PhysicsArena() {
                         ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
                       }}
                       onMouseMove={(e) => {
-                        if (!isDrawing) return;
+                        if (!isDrawingRef.current) return;
                         const canvas = canvasRef.current;
                         if (!canvas) return;
                         const ctx = canvas.getContext("2d");
                         if (!ctx) return;
                         const rect = canvas.getBoundingClientRect();
                         ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
-                        ctx.strokeStyle = "#0f766e";
-                        ctx.lineWidth = 2;
+                        ctx.strokeStyle = toolRef.current === "eraser" ? "#fdfefe" : drawColorRef.current;
+                        ctx.lineWidth = toolRef.current === "eraser" ? 16 : drawWidthRef.current;
+                        ctx.lineCap = "round";
+                        ctx.lineJoin = "round";
                         ctx.stroke();
                       }}
-                      onMouseUp={() => setIsDrawing(false)}
+                      onMouseUp={() => { isDrawingRef.current = false; }}
+                      onMouseLeave={() => { isDrawingRef.current = false; }}
                     />
                     <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
                       <button onClick={() => {
@@ -1247,36 +1735,8 @@ export default function PhysicsArena() {
             </div>
           ) : (
             <div style={{ padding: "10px 0" }}>
-              <div style={{ textAlign: "center", padding: "10px 10px 22px" }}>
-                <h2 style={{ color: "#0f766e", marginBottom: "6px" }}>🎉 Hoàn thành bài thi!</h2>
-                <p style={{ color: "#64748b", marginTop: 0 }}>Học sinh có thể xem lại điểm số và toàn bộ bài làm của mình dưới đây.</p>
-                <div style={{ display: "flex", justifyContent: "center", gap: "12px", flexWrap: "wrap", marginTop: "14px" }}>
-                  <div style={{ background: "#f0fdf4", border: "1px solid #5eead4", padding: "14px 20px", borderRadius: "10px", minWidth: "190px" }}>
-                    <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>ĐIỂM TRẮC NGHIỆM</div>
-                    <strong style={{ fontSize: "24px", color: "#0f766e" }}>{autoScore.toFixed(2)}</strong>
-                  </div>
-                  <div style={{ background: "#eff6ff", border: "1px solid #93c5fd", padding: "14px 20px", borderRadius: "10px", minWidth: "190px" }}>
-                    <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>TỔNG ĐIỂM HIỆN TẠI</div>
-                    <strong style={{ fontSize: "24px", color: "#1d4ed8" }}>{finalScore.toFixed(2)}</strong>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-6 space-y-4 text-left">
-                <h3 className="text-lg font-bold text-gray-700">Chi tiết bài làm của bạn:</h3>
-                {submissionDetails && submissionDetails.map((item, index) => (
-                  <div key={index} className={`p-4 rounded-lg border ${item.isCorrect ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                    <p className="font-medium text-gray-800">Câu {index + 1}: {item.questionText}</p>
-                    <p className="text-sm mt-1">
-                      - Đáp án bạn chọn: <span className="font-semibold">{item.studentAnswer}</span>
-                    </p>
-                    <p className="text-sm">
-                      - Đáp án đúng: <span className="font-semibold text-green-600">{item.correctAnswer}</span>
-                    </p>
-                  </div>
-                ))}
-              </div>
             </div>
-          )}
+          ))}
         </section>
       )}
     </main>
