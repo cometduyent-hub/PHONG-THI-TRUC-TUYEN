@@ -49,6 +49,12 @@ type Submission = {
   answers_data: Record<string, any>;
   submitted_at: string;
 };
+type PublishedExam = {
+  id: string;
+  title?: string | null;
+  duration?: number | null;
+  link: string;
+};
 function scoreTF(userAns: Record<string, boolean> | undefined, subTfs: SubTFItem[] | undefined, totalPoint: number): number {
   if (!subTfs || !userAns) return 0;
   let wrongCount = 0;
@@ -242,6 +248,14 @@ export default function PhysicsArena() {
   const [aiCount, setAiCount] = useState<number>(3);
   const [aiGeneratedQuestions, setAiGeneratedQuestions] = useState<Question[]>([]);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  // AI document upload additions
+  const [aiDocumentName, setAiDocumentName] = useState("");
+  const [aiDocumentText, setAiDocumentText] = useState("");
+  const [isReadingAiDocument, setIsReadingAiDocument] = useState(false);
+  const aiDocumentInputRef = useRef<HTMLInputElement | null>(null);
+  // Published exam link history additions
+  const [publishedExams, setPublishedExams] = useState<PublishedExam[]>([]);
+  const [isLoadingPublishedExams, setIsLoadingPublishedExams] = useState(false);
 
   // Student Review & Lookup state additions
   const [studentViewTab, setStudentViewTab] = useState<"take" | "lookup">("take");
@@ -370,6 +384,74 @@ export default function PhysicsArena() {
     });
   }, [submitted, exam, answers]);
 
+  async function handleAIDocumentUpload(file: File) {
+    setIsReadingAiDocument(true);
+    setAiDocumentName(file.name);
+    try {
+      const lowerName = file.name.toLowerCase();
+      if (lowerName.endsWith(".txt") || lowerName.endsWith(".md") || lowerName.endsWith(".csv") || lowerName.endsWith(".json")) {
+        const content = await file.text();
+        setAiDocumentText(content.slice(0, 120000));
+        setNotice(`Đã tải tài liệu "${file.name}" vào AI (${content.length.toLocaleString("vi-VN")} ký tự).`);
+      } else if (lowerName.endsWith(".xlsx")) {
+        const buffer = await file.arrayBuffer();
+        const wb = XLSX.read(buffer, { type: "array" });
+        const textFromSheets = wb.SheetNames.map(sheetName => {
+          const sheet = wb.Sheets[sheetName];
+          return `--- ${sheetName} ---\n${XLSX.utils.sheet_to_csv(sheet)}`;
+        }).join("\n");
+        setAiDocumentText(textFromSheets.slice(0, 120000));
+        setNotice(`Đã đọc tài liệu Excel "${file.name}" (${wb.SheetNames.length} trang tính).`);
+      } else {
+        setAiDocumentText("");
+        setNotice(`Đã chọn tài liệu "${file.name}". PDF/DOCX được nhận diện nhưng chưa trích xuất toàn văn vì code gốc không thêm thư viện parser mới.`);
+      }
+    } catch (error) {
+      console.error("Không thể đọc tài liệu AI:", error);
+      setAiDocumentText("");
+      setNotice(`Không thể đọc tài liệu "${file.name}".`);
+    } finally {
+      setIsReadingAiDocument(false);
+    }
+  }
+
+  function clearAiDocument() {
+    setAiDocumentName("");
+    setAiDocumentText("");
+    if (aiDocumentInputRef.current) aiDocumentInputRef.current.value = "";
+  }
+
+  async function loadPublishedExams() {
+    if (!supabase) {
+      setNotice("Chưa cấu hình Supabase nên chưa thể tải danh sách link đã xuất.");
+      return;
+    }
+    setIsLoadingPublishedExams(true);
+    const { data, error } = await supabase
+      .from("exams")
+      .select("id, title, duration")
+      .order("id", { ascending: false });
+    setIsLoadingPublishedExams(false);
+    if (error) {
+      setNotice("Không tải được danh sách link đã xuất: " + error.message);
+      return;
+    }
+    setPublishedExams(
+      (data || []).map((item: any) => ({
+        id: String(item.id),
+        title: item.title,
+        duration: Number(item.duration || 0),
+        link: `${window.location.origin}/?exam=${encodeURIComponent(String(item.id))}`
+      }))
+    );
+  }
+
+  useEffect(() => {
+    if (mode === "teacher" && tab === "matrix") {
+      void loadPublishedExams();
+    }
+  }, [mode, tab]);
+
   // AI Question Generation Simulation / Logic Function
   async function handleAIGenerate() {
     setIsGeneratingAi(true);
@@ -385,7 +467,7 @@ export default function PhysicsArena() {
             grade: aiGrade,
             topic: aiTopic,
             difficulty: "TH",
-            content: `[AI tạo] Câu hỏi trắc nghiệm số ${i} về chủ đề "${aiTopic}" (KHTN lớp ${aiGrade})?`,
+            content: `[AI tạo] Câu hỏi trắc nghiệm số ${i} về chủ đề "${aiTopic}" (KHTN lớp ${aiGrade})${aiDocumentName ? `, tham chiếu tài liệu "${aiDocumentName}"` : ""}?`,
             options: [
               { key: "A", text: "Đáp án đúng chuẩn khoa học cho câu hỏi này" },
               { key: "B", text: "Phương án nhiễu thứ nhất thường gặp" },
@@ -403,7 +485,7 @@ export default function PhysicsArena() {
             grade: aiGrade,
             topic: aiTopic,
             difficulty: "TH",
-            content: `[AI tạo] Nhận định các phát biểu sau về chủ đề "${aiTopic}":`,
+            content: `[AI tạo] Nhận định các phát biểu sau về chủ đề "${aiTopic}"${aiDocumentName ? `, tham chiếu tài liệu "${aiDocumentName}"` : ""}:`,
             subTfs: [
               { id: "a", content: "Phát biểu thứ nhất mô tả đúng bản chất hiện tượng.", key: true, difficulty: "NB" },
               { id: "b", content: "Phát biểu thứ hai có chứa chi tiết sai về mặt định lượng.", key: false, difficulty: "TH" },
@@ -420,7 +502,7 @@ export default function PhysicsArena() {
             grade: aiGrade,
             topic: aiTopic,
             difficulty: "VD",
-            content: `[AI tạo] Tính toán hoặc xác định giá trị ngắn gọn cho bài toán thuộc chủ đề "${aiTopic}":`,
+            content: `[AI tạo] Tính toán hoặc xác định giá trị ngắn gọn cho bài toán thuộc chủ đề "${aiTopic}"${aiDocumentName ? `, tham chiếu tài liệu "${aiDocumentName}"` : ""}:`,
             shortAnswer: "100",
             tolerance: 0.1,
             points: 0.5
@@ -433,7 +515,7 @@ export default function PhysicsArena() {
             grade: aiGrade,
             topic: aiTopic,
             difficulty: "VDC",
-            content: `[AI tạo] Trình bày bản chất, ý nghĩa và giải thích chi tiết hiện tượng liên quan đến "${aiTopic}".`,
+            content: `[AI tạo] Trình bày bản chất, ý nghĩa và giải thích chi tiết hiện tượng liên quan đến "${aiTopic}"${aiDocumentName ? `, tham chiếu tài liệu "${aiDocumentName}"` : ""}.`,
             points: 2.0
           });
         }
@@ -534,6 +616,7 @@ export default function PhysicsArena() {
       alert("Lỗi khi lưu đề lên hệ thống: " + error.message);
     } else {
       const shareLink = `${window.location.origin}/?exam=${examCodeId.trim()}`;
+      await loadPublishedExams();
       prompt(`Đã lưu và xuất link thành công cho mã đề [${examCodeId.trim()}]! Thầy hãy copy đường link sau gửi cho học sinh:`, shareLink);
     }
   }
@@ -756,7 +839,7 @@ export default function PhysicsArena() {
               else if (pass !== null) alert("Sai mật khẩu!");
             }} style={{ padding: "8px 14px", background: "#f0fdf4", border: "1px solid #5eead4", borderRadius: "8px", cursor: "pointer", fontWeight: "700", color: "#0f766e" }}>🔒 Giáo viên</button>
           )}
-          <button onClick={() => setMode("student")} style={{ padding: "8px 14px", background: mode === "student" ? "#0d9488" : "#f0fdf4", color: mode === "student" ? "#fff" : "#0f766e", border: "1px solid #5eead4", borderRadius: "8px", cursor: "pointer", fontWeight: "700" }}>👨‍🎓 Học sinh</button>
+          <button onClick={() => setMode("student")} style={{ padding: "8px 14px", background: mode === "student" ? "#0d9488" : "#f0fdf4", color: mode === "student" ? "#fff" : "#0f766e", border: "1px solid #5eead4", borderRadius: "8px", cursor: "pointer", fontWeight: "700" }}>👨🎓 Học sinh</button>
         </div>
       </header>
       {notice && <div className="notice" style={{ background: "#f0fdf4", border: "1px solid #5eead4", padding: "12px 24px", margin: "20px 28px", borderRadius: "10px", color: "#115e59", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 2px 4px rgba(0,0,0,0.02)" }}><span>{notice}</span><button onClick={() => setNotice("")} style={{ background: "none", border: "none", cursor: "pointer", fontWeight: "bold", fontSize: "16px", color: "#0f766e" }}>×</button></div>}
@@ -899,6 +982,34 @@ export default function PhysicsArena() {
                     />
                   </div>
                 </div>
+                <div style={{ background: "#eff6ff", padding: "14px", borderRadius: "10px", border: "1px solid #93c5fd", marginBottom: "20px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ fontSize: "13px", fontWeight: "800", color: "#1d4ed8" }}>📚 Tải tài liệu lên cho AI</div>
+                      <div style={{ fontSize: "11px", color: "#64748b", marginTop: "3px" }}>Hỗ trợ TXT, MD, CSV, XLSX, JSON và nhận diện PDF/DOCX. Tài liệu đọc được sẽ được dùng làm ngữ cảnh khi tạo câu hỏi.</div>
+                    </div>
+                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                      <label style={{ background: "#2563eb", color: "#fff", padding: "9px 14px", borderRadius: "7px", cursor: "pointer", fontSize: "12px", fontWeight: "700" }}>
+                        {isReadingAiDocument ? "⏳ Đang đọc..." : "📤 Tải tài liệu lên"}
+                        <input ref={aiDocumentInputRef} hidden type="file" accept=".txt,.md,.csv,.xlsx,.json,.pdf,.doc,.docx" onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (file) void handleAIDocumentUpload(file);
+                        }} />
+                      </label>
+                      {aiDocumentName && (
+                        <button type="button" onClick={clearAiDocument} style={{ background: "#fff", color: "#dc2626", border: "1px solid #fca5a5", padding: "8px 10px", borderRadius: "7px", cursor: "pointer", fontSize: "12px", fontWeight: "700" }}>
+                          ✕ Bỏ tài liệu
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {aiDocumentName && (
+                    <div style={{ marginTop: "10px", background: "#fff", padding: "9px 10px", borderRadius: "7px", border: "1px solid #bfdbfe", fontSize: "12px", color: "#1e3a8a" }}>
+                      <b>📎 Tài liệu:</b> {aiDocumentName}
+                      {aiDocumentText && <span> · Đã đọc {aiDocumentText.length.toLocaleString("vi-VN")} ký tự</span>}
+                    </div>
+                  )}
+                </div>
                 <div style={{ display: "flex", gap: "10px", marginBottom: "24px" }}>
                   <button 
                     onClick={handleAIGenerate} 
@@ -988,6 +1099,36 @@ export default function PhysicsArena() {
                     ))}
                   </div>
                 ))}
+
+                <div style={{ marginTop: "24px", background: "#f8fafc", padding: "16px", borderRadius: "10px", border: "1px solid #cbd5e1" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", flexWrap: "wrap", marginBottom: "12px" }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: "16px", color: "#0f766e" }}>🔗 Danh sách link đề đã xuất</h3>
+                      <p style={{ margin: "4px 0 0", fontSize: "12px", color: "#64748b" }}>Các mã đề đã lưu trên Supabase. Có thể mở lại, sao chép link hoặc dùng mã đề để tra cứu bài làm.</p>
+                    </div>
+                    <button onClick={loadPublishedExams} disabled={isLoadingPublishedExams} style={{ background: "#fff", color: "#0f766e", border: "1px solid #5eead4", padding: "7px 12px", borderRadius: "7px", cursor: isLoadingPublishedExams ? "wait" : "pointer", fontWeight: "700", fontSize: "12px" }}>
+                      {isLoadingPublishedExams ? "⏳ Đang tải..." : "🔄 Làm mới danh sách"}
+                    </button>
+                  </div>
+                  {!supabase ? (
+                    <div style={{ padding: "12px", background: "#fff7ed", color: "#9a3412", border: "1px solid #fdba74", borderRadius: "7px", fontSize: "12px" }}>Chưa cấu hình Supabase.</div>
+                  ) : publishedExams.length === 0 ? (
+                    <div style={{ padding: "16px", textAlign: "center", color: "#64748b", fontSize: "12px" }}>Chưa có đề nào được xuất hoặc chưa tải danh sách.</div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {publishedExams.map(item => (
+                        <div key={item.id} style={{ display: "grid", gridTemplateColumns: "140px 1fr auto", gap: "10px", alignItems: "center", background: "#fff", padding: "10px", borderRadius: "7px", border: "1px solid #e2e8f0" }}>
+                          <div><b style={{ color: "#0f766e", fontSize: "12px" }}>{item.id}</b><div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "2px" }}>{item.duration ? `${item.duration} phút` : "Không rõ thời gian"}</div></div>
+                          <input readOnly value={item.link} onFocus={e => e.currentTarget.select()} style={{ width: "100%", padding: "7px 9px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "11px", color: "#334155", background: "#f8fafc" }} />
+                          <div style={{ display: "flex", gap: "6px" }}>
+                            <button onClick={() => window.open(item.link, "_blank", "noopener,noreferrer")} style={{ background: "#eff6ff", color: "#1d4ed8", border: "1px solid #93c5fd", padding: "7px 9px", borderRadius: "6px", cursor: "pointer", fontSize: "11px", fontWeight: "700" }}>Mở</button>
+                            <button onClick={() => navigator.clipboard?.writeText(item.link).then(() => setNotice(`Đã sao chép link mã đề ${item.id}.`)).catch(() => prompt("Sao chép link này:", item.link))} style={{ background: "#f0fdf4", color: "#047857", border: "1px solid #86efac", padding: "7px 9px", borderRadius: "6px", cursor: "pointer", fontSize: "11px", fontWeight: "700" }}>📋 Copy</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
             {tab === "exam" && (
@@ -1657,6 +1798,10 @@ export default function PhysicsArena() {
               <div style={{ textAlign: "center", padding: "10px 10px 22px" }}>
                 <h2 style={{ color: "#0f766e", marginBottom: "6px" }}>🎉 Hoàn thành bài thi!</h2>
                 <p style={{ color: "#64748b", marginTop: 0 }}>Học sinh có thể xem lại điểm số và toàn bộ bài làm chi tiết của mình dưới đây.</p>
+                <div style={{ display: "flex", justifyContent: "center", gap: "10px", flexWrap: "wrap", marginTop: "14px", marginBottom: "12px" }}>
+                  <button onClick={() => document.getElementById("student-review-details")?.scrollIntoView({ behavior: "smooth", block: "start" })} style={{ background: "#0d9488", color: "#fff", border: "none", padding: "9px 14px", borderRadius: "8px", cursor: "pointer", fontWeight: "700", fontSize: "12px" }}>🔎 Xem lại bài làm</button>
+                  <button onClick={() => setStudentViewTab("lookup")} style={{ background: "#eff6ff", color: "#1d4ed8", border: "1px solid #93c5fd", padding: "9px 14px", borderRadius: "8px", cursor: "pointer", fontWeight: "700", fontSize: "12px" }}>📌 Tra cứu bài đã nộp</button>
+                </div>
                 <div style={{ display: "flex", justifyContent: "center", gap: "12px", flexWrap: "wrap", marginTop: "14px" }}>
                   <div style={{ background: "#f0fdf4", border: "1px solid #5eead4", padding: "14px 20px", borderRadius: "10px", minWidth: "190px" }}>
                     <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>ĐIỂM TRẮC NGHIỆM</div>
@@ -1693,7 +1838,7 @@ export default function PhysicsArena() {
                   );
                 })}
               </div>
-              <div style={{ marginTop: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div id="student-review-details" style={{ marginTop: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
                 <h3 style={{ fontSize: "16px", fontWeight: "800", color: "#0f766e" }}>Chi tiết bài làm và đáp án:</h3>
                 {submissionDetails
                   .filter(item => {
