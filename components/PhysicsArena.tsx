@@ -48,6 +48,10 @@ type Submission = {
   final_score?: number | null;
   answers_data: Record<string, any>;
   submitted_at: string;
+  grade?: string | null;
+  exit_count?: number | null;
+  attachments_data?: Record<string, { name: string; type: string; size: number; data: string }>;
+  essay_grading?: Record<string, { score: number; feedback: string }>;
 };
 type PublishedExam = {
   id: string;
@@ -234,8 +238,14 @@ export default function PhysicsArena() {
   
   const [studentName, setStudentName] = useState("");
   const [studentClass, setStudentClass] = useState("");
+  const [studentGrade, setStudentGrade] = useState("");
   const [studentSchool, setStudentSchool] = useState("");
   const [seconds, setSeconds] = useState(45 * 60);
+  const [examStarted, setExamStarted] = useState(false);
+  const [studentAttachments, setStudentAttachments] = useState<Record<string, { name: string; type: string; size: number; data: string }>>({});
+  const [essayFeedbacks, setEssayFeedbacks] = useState<Record<string, string>>({});
+  const [selectedExportClass, setSelectedExportClass] = useState("");
+  const [isSavingExam, setIsSavingExam] = useState(false);
   const [essayScores, setEssayScores] = useState<Record<string, number>>({});
   const [notice, setNotice] = useState("");
   const [antiCheatWarnings, setAntiCheatWarnings] = useState(0);
@@ -280,14 +290,14 @@ export default function PhysicsArena() {
   useEffect(() => { answersRef.current = answers; }, [answers]);
   useEffect(() => { examRef.current = exam; }, [exam]);
   useEffect(() => {
-    if (mode === "student" && exam.length > 0 && !submitted && !deadlineRef.current) {
-      const startSeconds = Math.max(1, seconds || examMinutes * 60);
+    if (mode === "student" && exam.length > 0 && examStarted && !submitted && !deadlineRef.current) {
+      const startSeconds = Math.max(1, examMinutes * 60);
       deadlineRef.current = Date.now() + startSeconds * 1000;
       setSeconds(startSeconds);
     }
-  }, [mode, exam.length, submitted]);
+  }, [mode, exam.length, examStarted, submitted, examMinutes]);
   useEffect(() => {
-    if (mode !== "student" || exam.length === 0 || submitted || !deadlineRef.current) return;
+    if (mode !== "student" || exam.length === 0 || !examStarted || submitted || !deadlineRef.current) return;
     const tick = () => {
       const remain = Math.max(0, Math.ceil((deadlineRef.current! - Date.now()) / 1000));
       setSeconds(remain);
@@ -296,9 +306,9 @@ export default function PhysicsArena() {
     tick();
     const timer = window.setInterval(tick, 250);
     return () => window.clearInterval(timer);
-  }, [mode, exam.length, submitted]);
+  }, [mode, exam.length, examStarted, submitted]);
   useEffect(() => {
-    if (mode !== "student" || exam.length === 0 || submitted) return;
+    if (mode !== "student" || exam.length === 0 || !examStarted || submitted) return;
     const onVisibility = () => {
       if (document.hidden) {
         setAntiCheatWarnings(v => v + 1);
@@ -307,7 +317,7 @@ export default function PhysicsArena() {
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [mode, exam.length, submitted]);
+  }, [mode, exam.length, examStarted, submitted]);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const examId = params.get("exam");
@@ -329,9 +339,10 @@ export default function PhysicsArena() {
           const duration = Number(data.duration || 45);
           setExam(loadedExam);
           setExamMinutes(duration);
-          deadlineRef.current = Date.now() + duration * 60 * 1000;
+          deadlineRef.current = null;
+          setExamStarted(false);
           setSeconds(duration * 60);
-          setNotice(`Đã tải thành công đề thi (${examId}) cho học sinh.`);
+          setNotice(`Đã tải thành công đề thi (${examId}) cho học sinh. Bấm “Làm bài kiểm tra” để bắt đầu tính giờ.`);
         } else {
           setNotice("Không tìm thấy mã đề thi này hoặc link không hợp lệ.");
         }
@@ -593,6 +604,69 @@ export default function PhysicsArena() {
         : `Đã tạo đề ${randomized.length} câu thành công với thời gian ${examMinutes} phút.`
     );
   }
+  async function saveExamEdits() {
+    if (!supabase) { setNotice("Chưa cấu hình Supabase."); return; }
+    if (!examCodeId.trim() || exam.length === 0) { setNotice("Chưa có mã đề hoặc đề để lưu."); return; }
+    setIsSavingExam(true);
+    const { error } = await supabase.from("exams").upsert([{
+      id: examCodeId.trim(),
+      title: "Kiểm tra Khoa học tự nhiên",
+      duration: examMinutes,
+      questions_data: exam
+    }]);
+    setIsSavingExam(false);
+    setNotice(error ? "Không lưu được chỉnh sửa đề: " + error.message : `💾 Đã lưu toàn bộ chỉnh sửa đề ${examCodeId.trim()} thành công.`);
+  }
+
+  function startStudentExam() {
+    if (!exam.length || submitted || examStarted) return;
+    if (!studentName.trim() || !studentClass.trim() || !studentGrade.trim()) {
+      alert("Vui lòng nhập Họ tên, Khối lớp và Lớp trước khi bắt đầu làm bài.");
+      return;
+    }
+    setExamStarted(true);
+    deadlineRef.current = Date.now() + Math.max(1, examMinutes * 60) * 1000;
+    setSeconds(examMinutes * 60);
+    setNotice(`Đã bắt đầu làm bài mã đề ${examCodeId}. Đồng hồ đã khởi động.`);
+  }
+
+  function handleStudentAttachment(qId: string, file: File) {
+    if (file.size > 5 * 1024 * 1024) { alert("Mỗi file tối đa 5 MB."); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const data = String(reader.result || "");
+      setStudentAttachments(prev => ({ ...prev, [qId]: { name: file.name, type: file.type || "application/octet-stream", size: file.size, data } }));
+      setAnswers(prev => ({ ...prev, [qId]: prev[qId] || "" }));
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function saveEssayGrade(submission: Submission, qId: string, score: number, feedback: string) {
+    if (!supabase || !submission.id) return;
+    const current = submission.essay_grading || {};
+    const next = { ...current, [qId]: { score: Math.max(0, Number(score) || 0), feedback } };
+    const essayScore = Object.values(next).reduce((sum: number, item: any) => sum + Math.max(0, Number(item?.score) || 0), 0);
+    const final = Number(submission.auto_score || 0) + essayScore;
+    const { error } = await supabase.from("student_submissions").update({ essay_score: essayScore, final_score: final, essay_grading: next }).eq("id", submission.id);
+    if (error) { setNotice("Không lưu được điểm tự luận: " + error.message); return; }
+    const updated = { ...submission, essay_score: essayScore, final_score: final, essay_grading: next };
+    setViewingSubmission(updated);
+    setSubmissions(prev => prev.map(s => s.id === submission.id ? updated : s));
+    setNotice(`Đã lưu điểm/nhận xét tự luận cho ${submission.student_name}.`);
+  }
+
+  async function exportSubmissionsByClass(className: string) {
+    if (!className.trim()) { setNotice("Vui lòng chọn lớp cần xuất."); return; }
+    if (!supabase) { setNotice("Chưa cấu hình Supabase."); return; }
+    const { data, error } = await supabase.from("student_submissions").select("*").eq("student_class", className.trim()).order("submitted_at", { ascending: true });
+    if (error) { setNotice("Không tải được kết quả theo lớp: " + error.message); return; }
+    if (!data?.length) { setNotice(`Lớp ${className} chưa có bài nộp.`); return; }
+    const rows = data.map((s: any, i: number) => ({ STT: i + 1, Mã_đề: s.exam_id, Họ_tên: s.student_name, Khối: s.grade || "", Lớp: s.student_class, Trường: s.student_school, Điểm_tự_động: Number(s.auto_score || 0), Điểm_tự_luận: Number(s.essay_score || 0), Tổng_điểm: Number(s.final_score ?? s.auto_score ?? 0), Số_lần_thoát: Number(s.exit_count || 0), Thời_gian_nộp: s.submitted_at }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Kết quả");
+    XLSX.writeFile(wb, `Ket_qua_lop_${className.replace(/[^a-zA-Z0-9_-]/g, "_")}.xlsx`);
+  }
+
   async function handlePublishAndGetLink() {
     if (!supabase) {
       alert("Chưa cấu hình Supabase. Hãy thêm NEXT_PUBLIC_SUPABASE_URL và NEXT_PUBLIC_SUPABASE_ANON_KEY trên Vercel.");
@@ -762,6 +836,10 @@ export default function PhysicsArena() {
       student_name: studentName.trim(),
       student_class: studentClass.trim(),
       student_school: studentSchool.trim(),
+      grade: studentGrade.trim(),
+      exit_count: antiCheatWarnings,
+      attachments_data: studentAttachments,
+      essay_grading: {},
       auto_score: score,
       essay_score: 0,
       final_score: score,
@@ -1135,7 +1213,7 @@ export default function PhysicsArena() {
               <div>
                 <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
                   <div><h2 style={{ fontSize: "20px", margin: 0, color: "#0f766e" }}>Xem & Chỉnh sửa đề thi hiện tại ({examCodeId})</h2><p style={{ color: "#64748b", margin: 0, fontSize: "13px" }}>Quản lý thang điểm, nội dung, Media và cấu hình mức độ từng ý Đúng/Sai.</p></div>
-                  <button onClick={generateExam} style={{ background: "#f0fdf4", border: "1px solid #5eead4", padding: "8px 14px", borderRadius: "8px", cursor: "pointer", fontWeight: "600", color: "#0f766e" }}>🔄 Tạo đề mới</button>
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}><button onClick={saveExamEdits} disabled={isSavingExam} style={{ background: "#059669", color: "#fff", border: "none", padding: "8px 14px", borderRadius: "8px", cursor: isSavingExam ? "wait" : "pointer", fontWeight: "700" }}>{isSavingExam ? "⏳ Đang lưu..." : "💾 SAVE chỉnh sửa"}</button><button onClick={generateExam} style={{ background: "#f0fdf4", border: "1px solid #5eead4", padding: "8px 14px", borderRadius: "8px", cursor: "pointer", fontWeight: "600", color: "#0f766e" }}>🔄 Tạo đề mới</button></div>
                 </div>
                 {exam.length === 0 ? <div style={{ textAlign: "center", padding: "30px", color: "#64748b" }}>Chưa có đề. Vui lòng vào Ma trận & tạo đề.</div> : (
                   <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
@@ -1184,6 +1262,26 @@ export default function PhysicsArena() {
                             {q.audioUrl && <span style={{ fontSize: "10px", color: "#059669", display: "block", marginTop: "2px" }}>✓ Đã có audio</span>}
                           </div>
                         </div>
+                        {q.section === "MCQ" && (
+                          <div style={{ marginTop: "12px", background: "#f8fafc", padding: "12px", borderRadius: "8px", border: "1px solid #cbd5e1" }}>
+                            <div style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e", marginBottom: "8px" }}>🔤 Chỉnh sửa 4 phương án và đáp án chuẩn:</div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                              {(["A","B","C","D"] as const).map(key => {
+                                const option = q.options?.find(o => o.key === key) || { key, text: "" };
+                                return <div key={key} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                                  <b style={{ width: "20px", color: "#0284c7" }}>{key}.</b>
+                                  <input type="text" value={option.text} onChange={e => setExam(prev => prev.map((item, idx) => idx === i ? { ...item, options: (["A","B","C","D"] as const).map(k => k === key ? { key: k, text: e.target.value } : (item.options?.find(o => o.key === k) || { key: k, text: "" })) } : item))} style={{ flex: 1, padding: "7px 8px", border: "1px solid #cbd5e1", borderRadius: "5px", fontSize: "12px" }} />
+                                </div>;
+                              })}
+                            </div>
+                            <div style={{ marginTop: "10px", display: "flex", alignItems: "center", gap: "8px" }}>
+                              <b style={{ fontSize: "12px", color: "#0f766e" }}>Đáp án chuẩn:</b>
+                              <select value={q.correctOption || "A"} onChange={e => setExam(prev => prev.map((item, idx) => idx === i ? { ...item, correctOption: e.target.value } : item))} style={{ padding: "6px 10px", borderRadius: "5px", border: "1px solid #cbd5e1", fontWeight: "700" }}>
+                                <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option>
+                              </select>
+                            </div>
+                          </div>
+                        )}
                         {q.section === "SHORT" && (
                           <div style={{ marginTop: "10px", background: "#f8fafc", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", display: "flex", gap: "10px", alignItems: "center" }}>
                             <span style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e" }}>Đáp án chuẩn:</span>
@@ -1269,7 +1367,7 @@ export default function PhysicsArena() {
                       style={{ padding: "8px", borderRadius: 8, border: "1px solid #cbd5e1", width: "130px", fontSize: "13px", fontWeight: "600" }} 
                     />
                     <button onClick={loadSubmissions} style={{ padding: "9px 12px", borderRadius: 8, border: "1px solid #5eead4", background: "#f0fdf4", cursor: "pointer", fontWeight: "600", color: "#0f766e" }}>🔄 Tải kết quả</button>
-                    <button onClick={exportSubmissionsExcel} style={{ padding: "9px 12px", borderRadius: 8, border: "none", background: "#0284c7", color: "#fff", cursor: "pointer", fontWeight: "600" }}>📊 Xuất Excel</button>
+                    <button onClick={exportSubmissionsExcel} style={{ padding: "9px 12px", borderRadius: 8, border: "none", background: "#0284c7", color: "#fff", cursor: "pointer", fontWeight: "600" }}>📊 Xuất theo mã đề</button><select value={selectedExportClass} onChange={e => setSelectedExportClass(e.target.value)} style={{ padding: "8px", borderRadius: 8, border: "1px solid #cbd5e1" }}><option value="">Chọn lớp để xuất</option>{Array.from(new Set(submissions.map(s => s.student_class).filter(Boolean))).map(c => <option key={c} value={c}>{c}</option>)}</select><button onClick={() => exportSubmissionsByClass(selectedExportClass)} style={{ padding: "9px 12px", borderRadius: 8, border: "none", background: "#7c3aed", color: "#fff", cursor: "pointer", fontWeight: "600" }}>📚 Xuất theo lớp</button>
                   </div>
                 </div>
                 <div style={{ marginTop: 18, background: "#f8fafc", padding: 16, borderRadius: 8, border: "1px solid #cbd5e1" }}>
@@ -1280,7 +1378,7 @@ export default function PhysicsArena() {
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                       <thead>
                         <tr style={{ background: "#f8fafc" }}>
-                          {["STT", "Họ tên", "Lớp", "Điểm tự động", "Tự luận", "Tổng", "Nộp lúc", "Thao tác"].map(h => (
+                          {["STT", "Họ tên", "Khối", "Lớp", "Điểm tự động", "Tự luận", "Tổng", "Thoát trang", "Nộp lúc", "Thao tác"].map(h => (
                             <th key={h} style={{ padding: 9, border: "1px solid #cbd5e1", textAlign: "left" }}>{h}</th>
                           ))}
                         </tr>
@@ -1290,10 +1388,12 @@ export default function PhysicsArena() {
                           <tr key={s.id || i}>
                             <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{i + 1}</td>
                             <td style={{ padding: 9, border: "1px solid #cbd5e1" }}><b>{s.student_name}</b></td>
+                            <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{s.grade || ""}</td>
                             <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{s.student_class}</td>
                             <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{Number(s.auto_score || 0).toFixed(2)}</td>
                             <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{Number(s.essay_score || 0).toFixed(2)}</td>
                             <td style={{ padding: 9, border: "1px solid #cbd5e1", fontWeight: 800, color: "#0f766e" }}>{Number(s.final_score ?? s.auto_score ?? 0).toFixed(2)}</td>
+                            <td style={{ padding: 9, border: "1px solid #cbd5e1", fontWeight: 700, color: Number(s.exit_count || 0) > 0 ? "#dc2626" : "#059669" }}>{Number(s.exit_count || 0)}</td>
                             <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>{new Date(s.submitted_at).toLocaleString("vi-VN")}</td>
                             <td style={{ padding: 9, border: "1px solid #cbd5e1" }}>
                               <button 
@@ -1359,11 +1459,15 @@ export default function PhysicsArena() {
                                 </div>
                               )}
                               {q.section === "ESSAY" && (
-                                <div style={{ fontSize: "13px", background: "#f8fafc", padding: "8px", borderRadius: "6px" }}>
-                                  <div>Bài làm tự luận của học sinh:</div>
-                                  <div style={{ background: "#fff", padding: "8px", border: "1px solid #cbd5e1", borderRadius: "4px", marginTop: "4px", whiteSpace: "pre-wrap", color: "#1e293b" }}>
-                                    {stuAns || "Học sinh không làm phần này."}
+                                <div style={{ fontSize: "13px", background: "#f8fafc", padding: "10px", borderRadius: "6px" }}>
+                                  <div><b>Bài làm tự luận của học sinh:</b></div>
+                                  <div style={{ background: "#fff", padding: "8px", border: "1px solid #cbd5e1", borderRadius: "4px", marginTop: "4px", whiteSpace: "pre-wrap", color: "#1e293b" }}>{stuAns || "Học sinh không làm phần này."}</div>
+                                  {viewingSubmission.attachments_data?.[q.id] && <div style={{ marginTop: "8px", padding: "8px", background: "#fff", border: "1px solid #93c5fd", borderRadius: "6px" }}><b>📎 File đính kèm:</b> <a href={viewingSubmission.attachments_data[q.id].data} target="_blank" rel="noreferrer">{viewingSubmission.attachments_data[q.id].name}</a>{viewingSubmission.attachments_data[q.id].type.startsWith("image/") && <img src={viewingSubmission.attachments_data[q.id].data} alt="Bài làm" style={{ display: "block", maxWidth: "100%", maxHeight: "300px", marginTop: "8px", borderRadius: "5px" }} />}</div>}
+                                  <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: "8px", marginTop: "10px", alignItems: "start" }}>
+                                    <div><label style={{ fontSize: "11px", fontWeight: "700", color: "#0f766e" }}>Điểm (tối đa {q.points}):</label><input type="number" min="0" max={q.points} step="0.01" defaultValue={viewingSubmission.essay_grading?.[q.id]?.score ?? 0} onChange={e => setEssayScores(prev => ({ ...prev, [q.id]: Math.min(q.points, Math.max(0, Number(e.target.value) || 0)) }))} style={{ width: "100%", padding: "7px", border: "1px solid #cbd5e1", borderRadius: "5px" }} /></div>
+                                    <div><label style={{ fontSize: "11px", fontWeight: "700", color: "#0f766e" }}>Nhận xét:</label><textarea rows={2} defaultValue={viewingSubmission.essay_grading?.[q.id]?.feedback || ""} onChange={e => setEssayFeedbacks(prev => ({ ...prev, [q.id]: e.target.value }))} style={{ width: "100%", padding: "7px", border: "1px solid #cbd5e1", borderRadius: "5px" }} /></div>
                                   </div>
+                                  <button onClick={() => saveEssayGrade(viewingSubmission, q.id, essayScores[q.id] ?? viewingSubmission.essay_grading?.[q.id]?.score ?? 0, essayFeedbacks[q.id] ?? viewingSubmission.essay_grading?.[q.id]?.feedback ?? "")} style={{ marginTop: "8px", background: "#059669", color: "#fff", border: "none", padding: "7px 12px", borderRadius: "6px", cursor: "pointer", fontWeight: "700" }}>💾 Lưu điểm & nhận xét</button>
                                 </div>
                               )}
                             </div>
@@ -1380,8 +1484,10 @@ export default function PhysicsArena() {
             )}
             {tab === "stats" && (
               <div>
-                <h2 style={{ fontSize: "20px", color: "#0f766e", marginBottom: "10px" }}>Thống kê phổ điểm</h2>
-                <p style={{ color: "#64748b", fontSize: "13px" }}>Phân tích kết quả làm bài của toàn bộ học sinh.</p>
+                <h2 style={{ fontSize: "20px", color: "#0f766e", marginBottom: "10px" }}>Thống kê phổ điểm theo khối</h2>
+                <p style={{ color: "#64748b", fontSize: "13px" }}>Phân tích kết quả từ các bài đã tải ở mục Chấm bài.</p>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", marginTop: "16px" }}>{["6","7","8","9"].map(g => { const rows = submissions.filter(s => String(s.grade || "") === g); const scores = rows.map(s => Number(s.final_score ?? s.auto_score ?? 0)); const avg = scores.length ? scores.reduce((a,b)=>a+b,0)/scores.length : 0; const max = scores.length ? Math.max(...scores) : 0; const min = scores.length ? Math.min(...scores) : 0; return <div key={g} style={{ background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: "10px", padding: "14px" }}><div style={{ fontWeight: "800", color: "#0f766e" }}>Khối {g}</div><div style={{ fontSize: "12px", marginTop: "8px" }}>Số bài: <b>{rows.length}</b></div><div style={{ fontSize: "12px" }}>Điểm TB: <b>{avg.toFixed(2)}</b></div><div style={{ fontSize: "12px" }}>Cao nhất: <b>{max.toFixed(2)}</b></div><div style={{ fontSize: "12px" }}>Thấp nhất: <b>{min.toFixed(2)}</b></div></div> })}</div>
+                <button onClick={loadSubmissions} style={{ marginTop: "14px", background: "#eff6ff", color: "#1d4ed8", border: "1px solid #93c5fd", padding: "8px 12px", borderRadius: "7px", cursor: "pointer", fontWeight: "700" }}>🔄 Tải lại dữ liệu</button>
               </div>
             )}
           </div>
@@ -1500,16 +1606,22 @@ export default function PhysicsArena() {
                 </div>
                 <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
                   <button onClick={() => setShowDrawingModal(true)} style={{ background: "#0284c7", color: "#fff", border: "none", padding: "8px 12px", borderRadius: "8px", fontWeight: "700", cursor: "pointer", fontSize: "13px" }}>✏️ Bảng vẽ hình / Nháp</button>
-                  <div style={{ background: "#ccfbf1", color: "#115e59", padding: "8px 14px", borderRadius: "8px", fontWeight: "700", border: "1px solid #2dd4bf" }}>
-                    ⏱️ {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
-                  </div>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}><div style={{ background: "#eff6ff", color: "#1d4ed8", padding: "8px 12px", borderRadius: "8px", fontWeight: "800", border: "1px solid #93c5fd" }}>🏷️ Mã đề: {examCodeId}</div><div style={{ background: examStarted ? "#ccfbf1" : "#f1f5f9", color: examStarted ? "#115e59" : "#64748b", padding: "8px 14px", borderRadius: "8px", fontWeight: "700", border: "1px solid #2dd4bf" }}>⏱️ {examStarted ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : "Chưa bắt đầu"}</div></div>
                 </div>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginBottom: "20px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "10px", marginBottom: "20px" }}>
                 <input type="text" placeholder="Họ và tên học sinh (*)" value={studentName} onChange={e => setStudentName(e.target.value)} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
-                <input type="text" placeholder="Lớp (Ví dụ: 7A)" value={studentClass} onChange={e => setStudentClass(e.target.value)} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
+                <select value={studentGrade} onChange={e => setStudentGrade(e.target.value)} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff" }}><option value="">Khối lớp (*)</option><option value="6">Khối 6</option><option value="7">Khối 7</option><option value="8">Khối 8</option><option value="9">Khối 9</option></select>
+                <input type="text" placeholder="Lớp (Ví dụ: 7/1)" value={studentClass} onChange={e => setStudentClass(e.target.value)} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
                 <input type="text" placeholder="Trường học" value={studentSchool} onChange={e => setStudentSchool(e.target.value)} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
               </div>
+              {exam.length > 0 && !examStarted && !submitted && (
+                <div style={{ background: "#ecfeff", padding: "16px", borderRadius: "10px", border: "1px solid #67e8f9", marginBottom: "20px", textAlign: "center" }}>
+                  <div style={{ fontWeight: "800", color: "#0e7490", marginBottom: "8px" }}>Mã đề đang chuẩn bị làm: {examCodeId}</div>
+                  <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "10px" }}>Đồng hồ chỉ bắt đầu khi em bấm nút bên dưới.</div>
+                  <button onClick={startStudentExam} style={{ background: "#0d9488", color: "#fff", border: "none", padding: "11px 24px", borderRadius: "8px", fontWeight: "800", cursor: "pointer", fontSize: "14px" }}>▶️ LÀM BÀI KIỂM TRA</button>
+                </div>
+              )}
               {exam.length > 0 && (
                 <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "10px", border: "1px solid #cbd5e1", marginBottom: "20px" }}>
                   <div style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e", marginBottom: "8px" }}>Danh sách câu hỏi (Xanh: Đã làm · Trắng: Chưa làm):</div>
@@ -1632,7 +1744,7 @@ export default function PhysicsArena() {
               {exam.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "40px", color: "#64748b" }}>Chưa có đề thi nào được tải. Vui lòng kiểm tra lại đường link hoặc yêu cầu giáo viên cung cấp đề.</div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "24px", opacity: examStarted ? 1 : 0.62, pointerEvents: examStarted ? "auto" : "none" }}>
                   {(["MCQ", "TF", "SHORT", "ESSAY"] as Section[]).map(sectionKey => {
                     const sectionQuestions = exam.filter(q => q.section === sectionKey);
                     if (sectionQuestions.length === 0) return null;
@@ -1754,18 +1866,14 @@ export default function PhysicsArena() {
                                       📁 Tải file bài làm lên
                                       <input type="file" hidden onChange={e => {
                                         const f = e.target.files?.[0];
-                                        if (f) {
-                                          setAnswers(prev => ({ ...prev, [q.id]: (prev[q.id] || "") + ` [Đã đính kèm file: ${f.name}]` }));
-                                        }
+                                        if (f) { handleStudentAttachment(q.id, f); }
                                       }} />
                                     </label>
                                     <label style={{ background: "#eff6ff", border: "1px solid #93c5fd", color: "#1d4ed8", padding: "6px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: "600", cursor: "pointer" }}>
                                       📷 Chụp ảnh bài làm từ điện thoại
                                       <input type="file" accept="image/*" capture="environment" hidden onChange={e => {
                                         const f = e.target.files?.[0];
-                                        if (f) {
-                                          setAnswers(prev => ({ ...prev, [q.id]: (prev[q.id] || "") + ` [Đã chụp ảnh bài làm: ${f.name}]` }));
-                                        }
+                                        if (f) { handleStudentAttachment(q.id, f); }
                                       }} />
                                     </label>
                                     <button 
