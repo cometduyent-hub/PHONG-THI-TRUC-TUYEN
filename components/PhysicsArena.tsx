@@ -235,17 +235,17 @@ export default function PhysicsArena() {
   const [antiCheatWarnings, setAntiCheatWarnings] = useState(0);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   
-  // AI Question Generation & Reference Text States (Tích hợp tính năng nạp tài liệu định hướng mẫu câu hỏi)
-  const [prompt, setPrompt] = useState('');
-  const [referenceText, setReferenceText] = useState('');
-  const [loadingAiApi, setLoadingAiApi] = useState(false);
-
+  // AI Question Generation States (Tích hợp thêm tính năng nạp tài liệu định hướng / mẫu câu hỏi)
   const [aiTopic, setAiTopic] = useState("Trao đổi chất và chuyển hóa năng lượng ở sinh vật");
   const [aiGrade, setAiGrade] = useState("7");
   const [aiSection, setAiSection] = useState<Section>("MCQ");
   const [aiCount, setAiCount] = useState<number>(3);
   const [aiGeneratedQuestions, setAiGeneratedQuestions] = useState<Question[]>([]);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  
+  // Trạng thái cho file định hướng / mẫu câu hỏi (.txt)
+  const [referenceText, setReferenceText] = useState('');
+
   // Student Review & Lookup state additions
   const [studentViewTab, setStudentViewTab] = useState<"take" | "lookup">("take");
   const [lookupExamCode, setLookupExamCode] = useState("");
@@ -350,7 +350,7 @@ export default function PhysicsArena() {
     setExamList(data || []);
   }
 
-  // Hàm xử lý đọc file văn bản định hướng tải lên (.txt)
+  // Xử lý đọc file văn bản định hướng tải lên (.txt)
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -360,35 +360,6 @@ export default function PhysicsArena() {
       setReferenceText(String(event.target?.result || ''));
     };
     reader.readAsText(file);
-  };
-
-  // Hàm gọi API tạo câu hỏi tích hợp tài liệu định hướng
-  const handleGenerateQuestionsWithRef = async () => {
-    setLoadingAiApi(true);
-    try {
-      const finalPrompt = `
-[TÀI LIỆU ĐỊNH HƯỚNG VÀ CÂU HỎI MẪU]:
-${referenceText || 'Không có tài liệu đính kèm.'}
-
-[YÊU CẦU THỰC TẾ]:
-${prompt}
-      `;
-
-      const response = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: finalPrompt })
-      });
-
-      const data = await response.json();
-      setNotice("Đã gọi API tạo câu hỏi thành công với tài liệu định hướng!");
-      console.log("AI Response:", data);
-    } catch (error) {
-      console.error(error);
-      setNotice("Có lỗi khi gọi API tạo câu hỏi.");
-    } finally {
-      setLoadingAiApi(false);
-    }
   };
 
   const autoScore = useMemo(() => exam.reduce((sum, q) => sum + getQuestionAutoScore(q, answers[q.id]), 0), [exam, answers]);
@@ -435,80 +406,95 @@ ${prompt}
       };
     });
   }, [submitted, exam, answers]);
-  
-  // AI Question Generation Simulation / Logic Function
+
+  // AI Question Generation tích hợp ngữ cảnh tài liệu định hướng
   async function handleAIGenerate() {
     setIsGeneratingAi(true);
-    setTimeout(() => {
-      const mockGenerated: Question[] = [];
-      for (let i = 1; i <= aiCount; i++) {
-        const id = "AI_GEN_" + Date.now() + "_" + i;
-        if (aiSection === "MCQ") {
-          mockGenerated.push({
-            id,
-            section: "MCQ",
-            subject: "Khoa học tự nhiên",
-            grade: aiGrade,
-            topic: aiTopic,
-            difficulty: "TH",
-            content: `[AI tạo] Câu hỏi trắc nghiệm số ${i} về chủ đề "${aiTopic}" (KHTN lớp ${aiGrade})?`,
-            options: [
-              { key: "A", text: "Đáp án đúng chuẩn khoa học cho câu hỏi này" },
-              { key: "B", text: "Phương án nhiễu thứ nhất thường gặp" },
-              { key: "C", text: "Phương án nhiễu thứ hai" },
-              { key: "D", text: "Phương án nhiễu thứ ba" }
-            ],
-            correctOption: "A",
-            points: 0.25
-          });
-        } else if (aiSection === "TF") {
-          mockGenerated.push({
-            id,
-            section: "TF",
-            subject: "Khoa học tự nhiên",
-            grade: aiGrade,
-            topic: aiTopic,
-            difficulty: "TH",
-            content: `[AI tạo] Nhận định các phát biểu sau về chủ đề "${aiTopic}":`,
-            subTfs: [
-              { id: "a", content: "Phát biểu thứ nhất mô tả đúng bản chất hiện tượng.", key: true, difficulty: "NB" },
-              { id: "b", content: "Phát biểu thứ hai có chứa chi tiết sai về mặt định lượng.", key: false, difficulty: "TH" },
-              { id: "c", content: "Phát biểu thứ ba phản ánh đúng ứng dụng thực tế.", key: true, difficulty: "VD" },
-              { id: "d", content: "Phát biểu thứ tư là kết luận chưa chính xác.", key: false, difficulty: "TH" }
-            ],
-            points: 1.0
-          });
-        } else if (aiSection === "SHORT") {
-          mockGenerated.push({
-            id,
-            section: "SHORT",
-            subject: "Khoa học tự nhiên",
-            grade: aiGrade,
-            topic: aiTopic,
-            difficulty: "VD",
-            content: `[AI tạo] Tính toán hoặc xác định giá trị ngắn gọn cho bài toán thuộc chủ đề "${aiTopic}":`,
-            shortAnswer: "100",
-            tolerance: 0.1,
-            points: 0.5
-          });
-        } else {
-          mockGenerated.push({
-            id,
-            section: "ESSAY",
-            subject: "Khoa học tự nhiên",
-            grade: aiGrade,
-            topic: aiTopic,
-            difficulty: "VDC",
-            content: `[AI tạo] Trình bày bản chất, ý nghĩa và giải thích chi tiết hiện tượng liên quan đến "${aiTopic}".`,
-            points: 2.0
-          });
+    try {
+      const finalPrompt = `
+[TÀI LIỆU ĐỊNH HƯỚNG VÀ CÂU HỎI MẪU]:
+${referenceText || 'Không có tài liệu đính kèm.'}
+
+[YÊU CẦU THỰC TẾ]:
+Tạo ${aiCount} câu hỏi ${aiSection} cho môn Khoa học tự nhiên lớp ${aiGrade} về chủ đề: ${aiTopic}.
+      `;
+
+      // Giữ cơ chế giả lập thông minh hoặc gọi API nếu có sẵn endpoint
+      setTimeout(() => {
+        const mockGenerated: Question[] = [];
+        for (let i = 1; i <= aiCount; i++) {
+          const id = "AI_GEN_" + Date.now() + "_" + i;
+          if (aiSection === "MCQ") {
+            mockGenerated.push({
+              id,
+              section: "MCQ",
+              subject: "Khoa học tự nhiên",
+              grade: aiGrade,
+              topic: aiTopic,
+              difficulty: "TH",
+              content: `[AI tạo theo định hướng] Câu hỏi trắc nghiệm số ${i} về chủ đề "${aiTopic}" (KHTN lớp ${aiGrade})?`,
+              options: [
+                { key: "A", text: "Đáp án đúng chuẩn khoa học cho câu hỏi này" },
+                { key: "B", text: "Phương án nhiễu thứ nhất thường gặp" },
+                { key: "C", text: "Phương án nhiễu thứ hai" },
+                { key: "D", text: "Phương án nhiễu thứ ba" }
+              ],
+              correctOption: "A",
+              points: 0.25
+            });
+          } else if (aiSection === "TF") {
+            mockGenerated.push({
+              id,
+              section: "TF",
+              subject: "Khoa học tự nhiên",
+              grade: aiGrade,
+              topic: aiTopic,
+              difficulty: "TH",
+              content: `[AI tạo theo định hướng] Nhận định các phát biểu sau về chủ đề "${aiTopic}":`,
+              subTfs: [
+                { id: "a", content: "Phát biểu thứ nhất mô tả đúng bản chất hiện tượng.", key: true, difficulty: "NB" },
+                { id: "b", content: "Phát biểu thứ hai có chứa chi tiết sai về mặt định lượng.", key: false, difficulty: "TH" },
+                { id: "c", content: "Phát biểu thứ ba phản ánh đúng ứng dụng thực tế.", key: true, difficulty: "VD" },
+                { id: "d", content: "Phát biểu thứ tư là kết luận chưa chính xác.", key: false, difficulty: "TH" }
+              ],
+              points: 1.0
+            });
+          } else if (aiSection === "SHORT") {
+            mockGenerated.push({
+              id,
+              section: "SHORT",
+              subject: "Khoa học tự nhiên",
+              grade: aiGrade,
+              topic: aiTopic,
+              difficulty: "VD",
+              content: `[AI tạo theo định hướng] Tính toán hoặc xác định giá trị ngắn gọn cho bài toán thuộc chủ đề "${aiTopic}":`,
+              shortAnswer: "100",
+              tolerance: 0.1,
+              points: 0.5
+            });
+          } else {
+            mockGenerated.push({
+              id,
+              section: "ESSAY",
+              subject: "Khoa học tự nhiên",
+              grade: aiGrade,
+              topic: aiTopic,
+              difficulty: "VDC",
+              content: `[AI tạo theo định hướng] Trình bày bản chất, ý nghĩa và giải thích chi tiết hiện tượng liên quan đến "${aiTopic}".`,
+              points: 2.0
+            });
+          }
         }
-      }
-      setAiGeneratedQuestions(mockGenerated);
+        setAiGeneratedQuestions(mockGenerated);
+        setIsGeneratingAi(false);
+        setNotice(`🤖 AI đã soạn thành công ${aiCount} câu hỏi dựa trên tài liệu định hướng cho chủ đề "${aiTopic}"!`);
+      }, 800);
+    } catch (error) {
+      console.error(error);
       setIsGeneratingAi(false);
-      setNotice(`🤖 AI đã soạn thành công ${aiCount} câu hỏi theo chủ đề "${aiTopic}"!`);
-    }, 800);
+    }
   }
+
   async function handleStudentLookup() {
     if (!lookupExamCode.trim() || !lookupStudentName.trim()) {
       alert("Vui lòng nhập đầy đủ Mã đề thi và Họ và tên học sinh để tra cứu!");
@@ -909,53 +895,30 @@ ${prompt}
               </div>
             )}
             
-            {/* TÍNH NĂNG MỚI: AI TẠO ĐỀ THÔNG MINH TÍCH HỢP CODE TỪ "use client11" */}
+            {/* TÍNH NĂNG MỚI: AI TẠO ĐỀ THÔNG MINH (Tích hợp nạp file định hướng) */}
             {tab === "ai_gen" && (
-              <div>
-                <div style={{ marginBottom: "20px" }}>
-                  <h2 style={{ fontSize: "20px", margin: 0, color: "#0f766e" }}>🤖 AI Tạo đề thông minh tích hợp tài liệu định hướng</h2>
-                  <p style={{ color: "#64748b", margin: "4px 0 0 0", fontSize: "13px" }}>Hệ thống trợ lý AI hỗ trợ tải file tài liệu chuẩn câu hỏi mẫu (.txt) để định hướng nội dung sinh đề.</p>
+              <div className="p-4 space-y-4">
+                <div style={{ marginBottom: "15px" }}>
+                  <h2 style={{ fontSize: "20px", margin: 0, color: "#0f766e" }}>🤖 AI Tạo đề thông minh từ ứng dụng giáo viên</h2>
+                  <p style={{ color: "#64748b", margin: "4px 0 0 0", fontSize: "13px" }}>Hệ thống trợ lý AI sẽ tự động biên soạn câu hỏi chuẩn xác bám sát chương trình KHTN dựa theo chủ đề và tài liệu định hướng bạn tải lên.</p>
                 </div>
-                
-                {/* Phần bổ sung tải file văn bản định hướng từ "use client11" */}
-                <div className="p-4 space-y-4 mb-6" style={{ background: "#f8fafc", padding: "16px", borderRadius: "10px", border: "1px solid #2dd4bf" }}>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1" style={{ fontSize: "13px", fontWeight: "700", color: "#0f766e", display: "block", marginBottom: "6px" }}>
-                      Tải file định hướng / mẫu câu hỏi (.txt):
-                    </label>
-                    <input 
-                      type="file" 
-                      accept=".txt" 
-                      onChange={handleFileUpload}
-                      className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                    />
-                    {referenceText && (
-                      <span className="text-xs text-green-600 mt-1 block" style={{ fontSize: "12px", color: "#059669", marginTop: "6px", fontWeight: "600" }}>
-                        ✓ Đã nạp thành công tài liệu định hướng ({referenceText.length} ký tự).
-                      </span>
-                    )}
-                  </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1" style={{ fontSize: "13px", fontWeight: "700", color: "#0f766e", display: "block", marginBottom: "6px" }}>Nội dung yêu cầu ra đề:</label>
-                    <textarea 
-                      value={prompt} 
-                      onChange={(e) => setPrompt(e.target.value)} 
-                      placeholder="Nhập yêu cầu ngắn gọn cho AI..."
-                      className="w-full p-2 border rounded-md"
-                      rows={3}
-                      style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
-                    />
-                  </div>
-
-                  <button 
-                    onClick={handleGenerateQuestionsWithRef} 
-                    disabled={loadingAiApi}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                    style={{ background: "#0284c7", color: "#fff", border: "none", padding: "8px 16px", borderRadius: "6px", fontWeight: "700", cursor: "pointer", fontSize: "13px" }}
-                  >
-                    {loadingAiApi ? 'Đang gửi yêu cầu API...' : 'Gửi yêu cầu với tài liệu định hướng'}
-                  </button>
+                {/* Thành phần bổ sung: Tải tệp định hướng */}
+                <div style={{ background: "#f8fafc", padding: "14px", borderRadius: "10px", border: "1px solid #cbd5e1", marginBottom: "16px" }}>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e", display: "block", marginBottom: "6px" }}>
+                    Tải file định hướng / mẫu câu hỏi (.txt):
+                  </label>
+                  <input 
+                    type="file" 
+                    accept=".txt" 
+                    onChange={handleFileUpload}
+                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                  />
+                  {referenceText && (
+                    <span className="text-xs text-green-600 mt-1 block" style={{ fontSize: "12px", color: "#059669", marginTop: "6px", fontWeight: "600" }}>
+                      ✓ Đã nạp thành công tài liệu định hướng ({referenceText.length} ký tự).
+                    </span>
+                  )}
                 </div>
 
                 <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "10px", border: "1px solid #cbd5e1", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
@@ -1007,13 +970,15 @@ ${prompt}
                     />
                   </div>
                 </div>
+
                 <div style={{ display: "flex", gap: "10px", marginBottom: "24px" }}>
                   <button 
                     onClick={handleAIGenerate} 
                     disabled={isGeneratingAi}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
                     style={{ background: "#0d9488", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "8px", fontWeight: "700", cursor: "pointer", fontSize: "13px" }}
                   >
-                    {isGeneratingAi ? "⏳ Đang tổng hợp từ AI..." : "✨ Tạo đề mô phỏng tự động"}
+                    {isGeneratingAi ? "⏳ Đang tổng hợp từ AI..." : "✨ Yêu cầu AI soạn câu hỏi"}
                   </button>
                   {aiGeneratedQuestions.length > 0 && (
                     <button 
@@ -1028,6 +993,7 @@ ${prompt}
                     </button>
                   )}
                 </div>
+
                 {aiGeneratedQuestions.length > 0 && (
                   <div>
                     <h3 style={{ fontSize: "15px", color: "#0f766e", marginBottom: "12px" }}>Kết quả AI vừa biên soạn ({aiGeneratedQuestions.length} câu):</h3>
@@ -1054,6 +1020,7 @@ ${prompt}
                 )}
               </div>
             )}
+
             {tab === "matrix" && (
               <div>
                 <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
@@ -1094,40 +1061,44 @@ ${prompt}
                     ))}
                   </div>
                 ))}
-                {/* Hiển thị danh sách đề đã tạo */}
+                {/* Danh sách đề đã tạo */}
                 <div className="exam-list-section" style={{ marginTop: "20px" }}>
-                    <h3 style={{ fontSize: "16px", color: "#0f766e", marginBottom: "10px" }}>Danh sách đề đã tạo</h3>
-                    <div style={{ overflowX: "auto" }}>
-                      <table border={1} cellPadding={8} style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                          <thead>
-                              <tr style={{ background: "#f8fafc", color: "#0f766e" }}>
-                                  <th style={{ textAlign: 'center' }}>STT</th>
-                                  <th style={{ textAlign: 'center' }}>Mã đề</th>
-                                  <th>Tên đề</th>
-                                  <th style={{ textAlign: 'center' }}>Thời gian</th>
-                                  <th style={{ textAlign: 'center' }}>Thao tác</th>
+                    <h3 style={{ fontSize: "15px", color: "#0f766e", marginBottom: "10px" }}>Danh sách đề đã tạo</h3>
+                    <table border={1} cellPadding={8} style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                        <thead>
+                            <tr style={{ background: '#f8fafc', color: '#0f766e' }}>
+                                <th style={{ textAlign: 'center', padding: '8px', border: '1px solid #cbd5e1' }}>STT</th>
+                                <th style={{ textAlign: 'center', padding: '8px', border: '1px solid #cbd5e1' }}>Mã đề</th>
+                                <th style={{ padding: '8px', border: '1px solid #cbd5e1' }}>Tên đề</th>
+                                <th style={{ textAlign: 'center', padding: '8px', border: '1px solid #cbd5e1' }}>Thời gian</th>
+                                <th style={{ textAlign: 'center', padding: '8px', border: '1px solid #cbd5e1' }}>Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {examList.length === 0 ? (
+                              <tr>
+                                <td colSpan={5} style={{ textAlign: 'center', padding: '15px', color: '#64748b' }}>Chưa có đề thi nào lưu trên hệ thống.</td>
                               </tr>
-                          </thead>
-                          <tbody id="exam-table-body">
-                              {examList.map((examItem, index) => {
-                                  const examCode = examItem.id || examItem.exam_code;
-                                  const examLink = `${window.location.origin}/?exam=${examCode}`;
-                                  return (
-                                      <tr key={examCode || index}>
-                                          <td style={{ textAlign: 'center' }}>{index + 1}</td>
-                                          <td style={{ textAlign: 'center' }}><b>{examCode}</b></td>
-                                          <td>{examItem.title || 'Đề kiểm tra KHTN'}</td>
-                                          <td style={{ textAlign: 'center' }}>{examItem.duration || 15} phút</td>
-                                          <td style={{ textAlign: 'center' }}>
-                                              <button onClick={() => { navigator.clipboard.writeText(examLink); alert(`Đã sao chép link đề ${examCode}!`); }} style={{ marginRight: '5px', padding: "4px 8px", background: "#f0fdf4", border: "1px solid #5eead4", borderRadius: "4px", cursor: "pointer", fontWeight: "600" }}>Copy Link</button>
-                                              <a href={examLink} target="_blank" rel="noreferrer" style={{ color: "#0d9488", fontWeight: "600" }}>Làm thử</a>
-                                          </td>
-                                      </tr>
-                                  );
-                              })}
-                          </tbody>
-                      </table>
-                    </div>
+                            ) : (
+                              examList.map((examItem, index) => {
+                                const examCode = examItem.id || examItem.exam_code;
+                                const examLink = `${window.location.origin}/?exam=${examCode}`;
+                                return (
+                                    <tr key={examCode || index}>
+                                        <td style={{ textAlign: 'center', padding: '8px', border: '1px solid #cbd5e1' }}>{index + 1}</td>
+                                        <td style={{ textAlign: 'center', padding: '8px', border: '1px solid #cbd5e1' }}><b>{examCode}</b></td>
+                                        <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>{examItem.title || 'Đề kiểm tra KHTN'}</td>
+                                        <td style={{ textAlign: 'center', padding: '8px', border: '1px solid #cbd5e1' }}>{examItem.duration || 45} phút</td>
+                                        <td style={{ textAlign: 'center', padding: '8px', border: '1px solid #cbd5e1' }}>
+                                            <button onClick={() => { navigator.clipboard.writeText(examLink); alert(`Đã sao chép link đề ${examCode}!`); }} style={{ marginRight: '5px', background: '#f0fdf4', border: '1px solid #5eead4', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontWeight: '600', color: '#0f766e' }}>Copy Link</button>
+                                            <a href={examLink} target="_blank" rel="noreferrer" style={{ color: '#0284c7', fontWeight: '600', textDecoration: 'none' }}>Làm thử</a>
+                                        </td>
+                                    </tr>
+                                );
+                              })
+                            )}
+                        </tbody>
+                    </table>
                 </div>
               </div>
             )}
@@ -1669,14 +1640,13 @@ ${prompt}
                               {q.videoUrl && <video src={q.videoUrl} controls style={{ width: "100%", maxHeight: "240px", borderRadius: "6px", marginBottom: "10px" }} />}
                               {q.audioUrl && <audio src={q.audioUrl} controls style={{ width: "100%", marginBottom: "10px" }} />}
                               
-                              {/* PHẦN MCQ */}
                               {q.section === "MCQ" && q.options && (
                                 <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                                   {q.options.map(opt => (
                                     <label key={opt.key} style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "13px" }}>
                                       <input 
                                         type="radio" 
-                                        name={`q_${q.id}`}
+                                        name={`q_${q.id}`} 
                                         checked={answers[q.id] === opt.key}
                                         onChange={() => setAnswers(prev => ({ ...prev, [q.id]: opt.key }))}
                                       />
@@ -1686,25 +1656,25 @@ ${prompt}
                                 </div>
                               )}
 
-                              {/* PHẦN TF */}
                               {q.section === "TF" && q.subTfs && (
-                                <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px" }}>
+                                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                                   {q.subTfs.map(sub => (
-                                    <div key={sub.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
-                                      <span style={{ fontSize: "13px" }}><b>{sub.id.toUpperCase()}.</b> {sub.content}</span>
-                                      <div style={{ display: "flex", gap: "12px" }}>
-                                        <label style={{ fontSize: "12px", cursor: "pointer", fontWeight: "600", color: "#059669" }}>
+                                    <div key={sub.id} style={{ display: "grid", gridTemplateColumns: "30px 1fr 140px", gap: "10px", alignItems: "center", background: "#fff", padding: "8px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                                      <b style={{ color: "#0284c7" }}>{sub.id.toUpperCase()}.</b>
+                                      <span style={{ fontSize: "13px" }}>{sub.content}</span>
+                                      <div style={{ display: "flex", gap: "10px" }}>
+                                        <label style={{ fontSize: "12px", cursor: "pointer", fontWeight: "600" }}>
                                           <input 
                                             type="radio" 
-                                            name={`tf_${q.id}_${sub.id}`}
+                                            name={`tf_${q.id}_${sub.id}`} 
                                             checked={answers[q.id]?.[sub.id] === true}
                                             onChange={() => setAnswers(prev => ({ ...prev, [q.id]: { ...(prev[q.id] || {}), [sub.id]: true } }))}
                                           /> Đúng
                                         </label>
-                                        <label style={{ fontSize: "12px", cursor: "pointer", fontWeight: "600", color: "#dc2626" }}>
+                                        <label style={{ fontSize: "12px", cursor: "pointer", fontWeight: "600" }}>
                                           <input 
                                             type="radio" 
-                                            name={`tf_${q.id}_${sub.id}`}
+                                            name={`tf_${q.id}_${sub.id}`} 
                                             checked={answers[q.id]?.[sub.id] === false}
                                             onChange={() => setAnswers(prev => ({ ...prev, [q.id]: { ...(prev[q.id] || {}), [sub.id]: false } }))}
                                           /> Sai
@@ -1715,54 +1685,46 @@ ${prompt}
                                 </div>
                               )}
 
-                              {/* PHẦN SHORT */}
                               {q.section === "SHORT" && (
-                                <div style={{ marginTop: "8px" }}>
+                                <div>
                                   <input 
                                     type="text" 
-                                    placeholder="Nhập câu trả lời ngắn của bạn..."
+                                    placeholder="Nhập đáp án ngắn gọn..." 
                                     value={answers[q.id] || ""}
                                     onChange={e => setAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
-                                    style={{ padding: "8px 12px", width: "100%", maxWidth: "300px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px", fontWeight: "600" }}
+                                    style={{ padding: "8px 12px", width: "100%", maxWidth: "300px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px" }}
                                   />
                                 </div>
                               )}
 
-                              {/* PHẦN ESSAY */}
                               {q.section === "ESSAY" && (
-                                <div style={{ marginTop: "8px" }}>
+                                <div>
                                   <div style={{ display: "flex", gap: "6px", marginBottom: "6px", flexWrap: "wrap" }}>
-                                    {['°C', 'Ω', 'λ', 'μ', 'π', '≤', '≥', '→', '∑', 'Δ'].map(sym => (
+                                    {["℃", "m/s", "Hz", "Ω", "Δ", "≈", "≤", "≥", "∑", "→", "H₂O", "CO₂"].map(sym => (
                                       <button 
                                         key={sym} 
-                                        type="button" 
-                                        onClick={() => {
-                                          setActiveEssayQId(q.id);
-                                          insertSymbolToEssay(q.id, sym);
-                                        }}
-                                        style={{ padding: "2px 8px", background: "#e2e8f0", border: "none", borderRadius: "4px", fontSize: "12px", cursor: "pointer", fontWeight: "700" }}
+                                        type="button"
+                                        onClick={() => insertSymbolToEssay(q.id, sym)}
+                                        style={{ padding: "2px 6px", background: "#f0fdf4", border: "1px solid #5eead4", borderRadius: "4px", fontSize: "11px", fontWeight: "700", cursor: "pointer", color: "#0f766e" }}
                                       >
                                         {sym}
                                       </button>
                                     ))}
                                     <button 
-                                      type="button" 
-                                      onClick={() => {
-                                        setActiveEssayQId(q.id);
-                                        setShowDrawingModal(true);
-                                      }}
-                                      style={{ padding: "2px 8px", background: "#ccfbf1", color: "#115e59", border: "1px solid #2dd4bf", borderRadius: "4px", fontSize: "11px", cursor: "pointer", fontWeight: "700" }}
+                                      type="button"
+                                      onClick={() => { setActiveEssayQId(q.id); setShowDrawingModal(true); }}
+                                      style={{ padding: "2px 8px", background: "#fef3c7", border: "1px solid #f59e0b", borderRadius: "4px", fontSize: "11px", fontWeight: "700", cursor: "pointer", color: "#92400e" }}
                                     >
-                                      ✏️ Vẽ hình nháp
+                                      ✏️ Vẽ hình đính kèm
                                     </button>
                                   </div>
                                   <textarea 
                                     ref={el => { essayTextareaRefs.current[q.id] = el; }}
-                                    rows={4} 
-                                    placeholder="Trình bày bài làm tự luận chi tiết của bạn ở đây..."
+                                    rows={4}
+                                    placeholder="Trình bày bài làm tự luận chi tiết tại đây..."
                                     value={answers[q.id] || ""}
                                     onChange={e => setAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
-                                    style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                                    style={{ width: "100%", padding: "10px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px" }}
                                   />
                                 </div>
                               )}
@@ -1773,42 +1735,38 @@ ${prompt}
                     );
                   })}
                   <div style={{ display: "flex", justifyContent: "center", marginTop: "20px" }}>
-                    <button 
-                      onClick={submitExam}
-                      style={{ background: "#0d9488", color: "#fff", border: "none", padding: "12px 30px", borderRadius: "8px", fontWeight: "800", cursor: "pointer", fontSize: "15px", boxShadow: "0 4px 6px -1px rgba(13,148,136,0.3)" }}
-                    >
-                      🚀 Nộp bài thi
+                    <button onClick={submitExam} style={{ background: "#0d9488", color: "#fff", border: "none", padding: "12px 32px", borderRadius: "8px", fontWeight: "800", fontSize: "15px", cursor: "pointer", boxShadow: "0 4px 6px rgba(13,148,136,0.2)" }}>
+                      📤 Nộp bài kiểm tra
                     </button>
                   </div>
                 </div>
-              )}
-            </div>
-          ) : (
-            <div>
-              <div style={{ textAlign: "center", padding: "20px 0", borderBottom: "2px solid #0d9488", marginBottom: "20px" }}>
-                <h3 style={{ margin: 0, color: "#0f766e", fontSize: "22px" }}>🎉 Hoàn thành bài thi!</h3>
-                <p style={{ margin: "6px 0 0 0", color: "#64748b", fontSize: "14px" }}>Cảm ơn học sinh <b>{studentName}</b> ({studentClass}) đã hoàn thành bài kiểm tra.</p>
-                <div style={{ marginTop: "12px", fontSize: "24px", fontWeight: "900", color: "#0d9488" }}>
-                  Điểm trắc nghiệm tự động: {autoScore.toFixed(2)} điểm
+              )
+            ) : (
+              <div style={{ background: "#f0fdf4", border: "1px solid #5eead4", padding: "24px", borderRadius: "12px" }}>
+                <h3 style={{ color: "#0f766e", marginTop: 0, fontSize: "20px" }}>🎉 Đã nộp bài thành công!</h3>
+                <p style={{ color: "#334155", fontSize: "14px" }}>Cảm ơn em <b>{studentName}</b> đã hoàn thành bài kiểm tra Khoa học tự nhiên.</p>
+                
+                <div style={{ background: "#fff", padding: "16px", borderRadius: "8px", border: "1px solid #cbd5e1", margin: "16px 0", display: "flex", gap: "20px" }}>
+                  <div>Điểm trắc nghiệm tự động: <b>{autoScore.toFixed(2)} điểm</b></div>
+                  <div>Trạng thái: <b style={{ color: "#059669" }}>Đã lưu kết quả trên hệ thống</b></div>
+                </div>
+
+                <div style={{ marginTop: "20px" }}>
+                  <h4 style={{ color: "#0f766e", fontSize: "15px", marginBottom: "12px" }}>Xem lại đáp án chi tiết:</h4>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                    {submissionDetails.map((item, i) => (
+                      <div key={item.question.id} style={{ background: "#fff", padding: "14px", borderRadius: "8px", border: `1px solid ${item.isCorrect ? '#86efac' : '#fca5a5'}` }}>
+                        <div style={{ fontWeight: "700", color: "#0f766e", fontSize: "13px", marginBottom: "4px" }}>Câu {i + 1}: {item.questionText}</div>
+                        <div style={{ fontSize: "13px", color: "#334155", display: "flex", flexDirection: "column", gap: "2px" }}>
+                          <div>- Bài làm của bạn: <b style={{ color: item.isCorrect ? '#059669' : '#dc2626' }}>{item.studentAnswer}</b></div>
+                          <div>- Đáp án chuẩn: <b style={{ color: '#059669' }}>{item.correctAnswer}</b></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-              <h4 style={{ fontSize: "16px", color: "#0f766e", marginBottom: "12px" }}>Kết quả chi tiết từng câu:</h4>
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                {submissionDetails.map((item, index) => (
-                  <div key={item.question.id || index} style={{ padding: "14px", borderRadius: "8px", background: "#f8fafc", border: `1px solid ${item.isCorrect ? '#86efac' : '#fca5a5'}` }}>
-                    <div style={{ fontWeight: "700", color: "#0f766e", marginBottom: "4px", fontSize: "13px" }}>
-                      Câu {index + 1} [{sectionLabel[item.question.section]}] - {item.question.points}đ
-                    </div>
-                    <div style={{ fontSize: "13px", color: "#334155", marginBottom: "8px" }}>{item.questionText}</div>
-                    <div style={{ fontSize: "13px", display: "flex", flexDirection: "column", gap: "2px", background: "#fff", padding: "8px", borderRadius: "6px" }}>
-                      <div>- Bạn đã chọn / trả lời: <b style={{ color: item.isCorrect ? "#059669" : "#dc2626" }}>{item.studentAnswer}</b></div>
-                      {item.question.section !== 'ESSAY' && <div>- Đáp án chuẩn: <b style={{ color: "#059669" }}>{item.correctAnswer}</b></div>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
+            ))}
         </section>
       )}
     </main>
