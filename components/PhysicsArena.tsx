@@ -265,6 +265,7 @@ export default function PhysicsArena() {
   // AI document upload additions
   const [aiDocumentName, setAiDocumentName] = useState("");
   const [aiDocumentText, setAiDocumentText] = useState("");
+  const [aiDocumentFile, setAiDocumentFile] = useState<File | null>(null);
   const [isReadingAiDocument, setIsReadingAiDocument] = useState(false);
   const aiDocumentInputRef = useRef<HTMLInputElement | null>(null);
   // Published exam link history additions
@@ -407,12 +408,13 @@ export default function PhysicsArena() {
   async function handleAIDocumentUpload(file: File) {
     setIsReadingAiDocument(true);
     setAiDocumentName(file.name);
+    setAiDocumentFile(file);
     try {
       const lowerName = file.name.toLowerCase();
       if (lowerName.endsWith(".txt") || lowerName.endsWith(".md") || lowerName.endsWith(".csv") || lowerName.endsWith(".json")) {
         const content = await file.text();
         setAiDocumentText(content.slice(0, 120000));
-        setNotice(`Đã tải tài liệu "${file.name}" vào AI (${content.length.toLocaleString("vi-VN")} ký tự).`);
+        setNotice(`Đã chọn tài liệu "${file.name}". Khi bấm tạo đề, tài liệu sẽ được gửi nguyên file cho AI để phân tích.`);
       } else if (lowerName.endsWith(".xlsx")) {
         const buffer = await file.arrayBuffer();
         const wb = XLSX.read(buffer, { type: "array" });
@@ -421,15 +423,18 @@ export default function PhysicsArena() {
           return `--- ${sheetName} ---\n${XLSX.utils.sheet_to_csv(sheet)}`;
         }).join("\n");
         setAiDocumentText(textFromSheets.slice(0, 120000));
-        setNotice(`Đã đọc tài liệu Excel "${file.name}" (${wb.SheetNames.length} trang tính).`);
+        setNotice(`Đã đọc nhanh Excel "${file.name}". AI sẽ nhận cả file gốc và phần văn bản đã trích xuất.`);
+      } else if (lowerName.endsWith(".pdf") || lowerName.endsWith(".doc") || lowerName.endsWith(".docx")) {
+        setAiDocumentText("");
+        setNotice(`Đã chọn ${file.name}. PDF/DOC/DOCX sẽ được gửi trực tiếp tới AI ở máy chủ để đọc nội dung, thay vì chỉ nhận tên file như V1.5.`);
       } else {
         setAiDocumentText("");
-        setNotice(`Đã chọn tài liệu "${file.name}". PDF/DOCX được nhận diện nhưng chưa trích xuất toàn văn vì code gốc không thêm thư viện parser mới.`);
+        setNotice(`Đã chọn tài liệu "${file.name}". AI sẽ nhận file gốc khi tạo đề.`);
       }
     } catch (error) {
       console.error("Không thể đọc tài liệu AI:", error);
       setAiDocumentText("");
-      setNotice(`Không thể đọc tài liệu "${file.name}".`);
+      setNotice(`Đã chọn tài liệu "${file.name}" nhưng không thể đọc nhanh trên trình duyệt. AI vẫn sẽ nhận file gốc khi tạo đề.`);
     } finally {
       setIsReadingAiDocument(false);
     }
@@ -438,6 +443,7 @@ export default function PhysicsArena() {
   function clearAiDocument() {
     setAiDocumentName("");
     setAiDocumentText("");
+    setAiDocumentFile(null);
     if (aiDocumentInputRef.current) aiDocumentInputRef.current.value = "";
   }
 
@@ -473,78 +479,61 @@ export default function PhysicsArena() {
     }
   }, [mode, tab]);
 
-  // AI Question Generation Simulation / Logic Function
+  // AI Question Generation V1.6: gửi tài liệu thật tới API server để AI đọc và sinh câu hỏi
   async function handleAIGenerate() {
+    if (!aiTopic.trim()) {
+      setNotice("Vui lòng nhập chủ đề trước khi tạo câu hỏi.");
+      return;
+    }
+    if (!aiDocumentFile && !aiDocumentText.trim()) {
+      setNotice("Vui lòng tải tài liệu lên hoặc nhập nội dung tài liệu trước khi yêu cầu AI tạo câu hỏi.");
+      return;
+    }
+
     setIsGeneratingAi(true);
-    setTimeout(() => {
-      const mockGenerated: Question[] = [];
-      for (let i = 1; i <= aiCount; i++) {
-        const id = "AI_GEN_" + Date.now() + "_" + i;
-        if (aiSection === "MCQ") {
-          mockGenerated.push({
-            id,
-            section: "MCQ",
-            subject: "Khoa học tự nhiên",
-            grade: aiGrade,
-            topic: aiTopic,
-            difficulty: "TH",
-            content: `[AI tạo] Câu hỏi trắc nghiệm số ${i} về chủ đề "${aiTopic}" (KHTN lớp ${aiGrade})${aiDocumentName ? `, tham chiếu tài liệu "${aiDocumentName}"` : ""}?`,
-            options: [
-              { key: "A", text: "Đáp án đúng chuẩn khoa học cho câu hỏi này" },
-              { key: "B", text: "Phương án nhiễu thứ nhất thường gặp" },
-              { key: "C", text: "Phương án nhiễu thứ hai" },
-              { key: "D", text: "Phương án nhiễu thứ ba" }
-            ],
-            correctOption: "A",
-            points: 0.25
-          });
-        } else if (aiSection === "TF") {
-          mockGenerated.push({
-            id,
-            section: "TF",
-            subject: "Khoa học tự nhiên",
-            grade: aiGrade,
-            topic: aiTopic,
-            difficulty: "TH",
-            content: `[AI tạo] Nhận định các phát biểu sau về chủ đề "${aiTopic}"${aiDocumentName ? `, tham chiếu tài liệu "${aiDocumentName}"` : ""}:`,
-            subTfs: [
-              { id: "a", content: "Phát biểu thứ nhất mô tả đúng bản chất hiện tượng.", key: true, difficulty: "NB" },
-              { id: "b", content: "Phát biểu thứ hai có chứa chi tiết sai về mặt định lượng.", key: false, difficulty: "TH" },
-              { id: "c", content: "Phát biểu thứ ba phản ánh đúng ứng dụng thực tế.", key: true, difficulty: "VD" },
-              { id: "d", content: "Phát biểu thứ tư là kết luận chưa chính xác.", key: false, difficulty: "TH" }
-            ],
-            points: 1.0
-          });
-        } else if (aiSection === "SHORT") {
-          mockGenerated.push({
-            id,
-            section: "SHORT",
-            subject: "Khoa học tự nhiên",
-            grade: aiGrade,
-            topic: aiTopic,
-            difficulty: "VD",
-            content: `[AI tạo] Tính toán hoặc xác định giá trị ngắn gọn cho bài toán thuộc chủ đề "${aiTopic}"${aiDocumentName ? `, tham chiếu tài liệu "${aiDocumentName}"` : ""}:`,
-            shortAnswer: "100",
-            tolerance: 0.1,
-            points: 0.5
-          });
-        } else {
-          mockGenerated.push({
-            id,
-            section: "ESSAY",
-            subject: "Khoa học tự nhiên",
-            grade: aiGrade,
-            topic: aiTopic,
-            difficulty: "VDC",
-            content: `[AI tạo] Trình bày bản chất, ý nghĩa và giải thích chi tiết hiện tượng liên quan đến "${aiTopic}"${aiDocumentName ? `, tham chiếu tài liệu "${aiDocumentName}"` : ""}.`,
-            points: 2.0
-          });
-        }
+    setAiGeneratedQuestions([]);
+    try {
+      const form = new FormData();
+      form.append("topic", aiTopic.trim());
+      form.append("grade", aiGrade);
+      form.append("section", aiSection);
+      form.append("count", String(aiCount));
+      form.append("documentName", aiDocumentName);
+      if (aiDocumentText) form.append("documentText", aiDocumentText);
+      if (aiDocumentFile) form.append("file", aiDocumentFile, aiDocumentFile.name);
+
+      const response = await fetch("/api/ai/generate", { method: "POST", body: form });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result?.error || `AI trả về lỗi HTTP ${response.status}.`);
       }
-      setAiGeneratedQuestions(mockGenerated);
+
+      const generated = Array.isArray(result?.questions) ? result.questions : [];
+      const normalized: Question[] = generated.map((q: any, index: number) => ({
+        id: `AI_GEN_${Date.now()}_${index + 1}`,
+        section: q.section as Section,
+        subject: q.subject || "Khoa học tự nhiên",
+        grade: String(q.grade || aiGrade),
+        topic: q.topic || aiTopic,
+        difficulty: (q.difficulty || "TH") as Difficulty,
+        content: String(q.content || ""),
+        options: Array.isArray(q.options) ? q.options : undefined,
+        correctOption: q.correctOption || undefined,
+        subTfs: Array.isArray(q.subTfs) ? q.subTfs : undefined,
+        shortAnswer: q.shortAnswer ?? undefined,
+        tolerance: q.tolerance ?? undefined,
+        points: Number(q.points ?? (aiSection === "MCQ" ? 0.25 : aiSection === "TF" ? 1 : aiSection === "SHORT" ? 0.5 : 2))
+      }));
+
+      if (!normalized.length) throw new Error("AI không tạo được câu hỏi từ tài liệu này.");
+      setAiGeneratedQuestions(normalized);
+      setNotice(`🤖 Đã phân tích tài liệu "${aiDocumentName || aiTopic}" và tạo ${normalized.length} câu hỏi. Hãy kiểm tra trước khi đưa vào Ngân hàng.`);
+    } catch (error: any) {
+      console.error("AI V1.6 error:", error);
+      setNotice(`❌ ${error?.message || "Không thể tạo câu hỏi bằng AI."}`);
+    } finally {
       setIsGeneratingAi(false);
-      setNotice(`🤖 AI đã soạn thành công ${aiCount} câu hỏi theo chủ đề "${aiTopic}"!`);
-    }, 800);
+    }
   }
 
   async function handleStudentLookup() {
@@ -1130,7 +1119,7 @@ export default function PhysicsArena() {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
                     <div>
                       <div style={{ fontSize: "13px", fontWeight: "800", color: "#1d4ed8" }}>📚 Tải tài liệu lên cho AI</div>
-                      <div style={{ fontSize: "11px", color: "#64748b", marginTop: "3px" }}>Hỗ trợ TXT, MD, CSV, XLSX, JSON và nhận diện PDF/DOCX. Tài liệu đọc được sẽ được dùng làm ngữ cảnh khi tạo câu hỏi.</div>
+                      <div style={{ fontSize: "11px", color: "#64748b", marginTop: "3px" }}>Hỗ trợ TXT, MD, CSV, XLSX, JSON, PDF, DOC và DOCX. File được gửi tới máy chủ AI để phân tích nội dung thật trước khi sinh câu hỏi.</div>
                     </div>
                     <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                       <label style={{ background: "#2563eb", color: "#fff", padding: "9px 14px", borderRadius: "7px", cursor: "pointer", fontSize: "12px", fontWeight: "700" }}>
@@ -1150,7 +1139,7 @@ export default function PhysicsArena() {
                   {aiDocumentName && (
                     <div style={{ marginTop: "10px", background: "#fff", padding: "9px 10px", borderRadius: "7px", border: "1px solid #bfdbfe", fontSize: "12px", color: "#1e3a8a" }}>
                       <b>📎 Tài liệu:</b> {aiDocumentName}
-                      {aiDocumentText && <span> · Đã đọc {aiDocumentText.length.toLocaleString("vi-VN")} ký tự</span>}
+                      {aiDocumentText && <span> · Đã đọc nhanh {aiDocumentText.length.toLocaleString("vi-VN")} ký tự</span>}
                     </div>
                   )}
                 </div>
@@ -2140,4 +2129,3 @@ export default function PhysicsArena() {
     </main>
   );
 }
-
