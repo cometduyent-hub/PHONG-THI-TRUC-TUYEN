@@ -37,6 +37,7 @@ type Matrix = {
   SHORT: Record<Difficulty, number>;
   ESSAY: Record<Difficulty, number>;
 };
+type AttachmentItem = { name: string; type: string; size: number; data: string; source?: "upload" | "drawing"; };
 type Submission = {
   id?: string;
   exam_id: string;
@@ -50,7 +51,7 @@ type Submission = {
   submitted_at: string;
   grade?: string | null;
   exit_count?: number | null;
-  attachments_data?: Record<string, { name: string; type: string; size: number; data: string }>;
+  attachments_data?: Record<string, AttachmentItem | AttachmentItem[]>;
   essay_grading?: Record<string, { score: number; feedback: string }>;
 };
 type PublishedExam = {
@@ -242,7 +243,8 @@ export default function PhysicsArena() {
   const [studentSchool, setStudentSchool] = useState("");
   const [seconds, setSeconds] = useState(45 * 60);
   const [examStarted, setExamStarted] = useState(false);
-  const [studentAttachments, setStudentAttachments] = useState<Record<string, { name: string; type: string; size: number; data: string }>>({});
+  const [studentAttachments, setStudentAttachments] = useState<Record<string, AttachmentItem[]>>({});
+  const [showEquationPanel, setShowEquationPanel] = useState<string | null>(null);
   const [essayFeedbacks, setEssayFeedbacks] = useState<Record<string, string>>({});
   const [selectedExportClass, setSelectedExportClass] = useState("");
   const [isSavingExam, setIsSavingExam] = useState(false);
@@ -635,10 +637,49 @@ export default function PhysicsArena() {
     const reader = new FileReader();
     reader.onload = () => {
       const data = String(reader.result || "");
-      setStudentAttachments(prev => ({ ...prev, [qId]: { name: file.name, type: file.type || "application/octet-stream", size: file.size, data } }));
+      const item: AttachmentItem = { name: file.name, type: file.type || "application/octet-stream", size: file.size, data, source: "upload" };
+      setStudentAttachments(prev => ({ ...prev, [qId]: [...(prev[qId] || []), item] }));
       setAnswers(prev => ({ ...prev, [qId]: prev[qId] || "" }));
     };
     reader.readAsDataURL(file);
+  }
+
+  function addDrawingToEssay() {
+    const canvas = canvasRef.current;
+    if (!canvas || !activeEssayQId) { setShowDrawingModal(false); return; }
+    const data = canvas.toDataURL("image/png");
+    const item: AttachmentItem = { name: `Hinh_ve_${activeEssayQId}.png`, type: "image/png", size: Math.round(data.length * 0.75), data, source: "drawing" };
+    setStudentAttachments(prev => ({ ...prev, [activeEssayQId]: [...(prev[activeEssayQId] || []), item] }));
+    setAnswers(prev => ({ ...prev, [activeEssayQId]: prev[activeEssayQId] || "" }));
+    setShowDrawingModal(false);
+  }
+
+  function normalizeAttachments(value: AttachmentItem | AttachmentItem[] | undefined): AttachmentItem[] {
+    if (!value) return [];
+    return Array.isArray(value) ? value : [value];
+  }
+
+  async function uploadAttachmentIfPossible(examId: string, studentNameValue: string, qId: string, item: AttachmentItem, index: number): Promise<AttachmentItem> {
+    if (!supabase || !item.data.startsWith("data:")) return item;
+    try {
+      const match = item.data.match(/^data:([^;]+);base64,(.+)$/);
+      if (!match) return item;
+      const byteChars = atob(match[2]);
+      const bytes = new Uint8Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+      const blob = new Blob([bytes], { type: match[1] });
+      const safeExam = String(examId || "LOCAL_TEST").replace(/[^a-zA-Z0-9_-]/g, "_");
+      const safeName = String(studentNameValue || "student").replace(/[^a-zA-Z0-9_-]/g, "_");
+      const ext = item.type.split("/")[1]?.replace(/[^a-zA-Z0-9]/g, "") || "bin";
+      const path = `${safeExam}/${Date.now()}_${safeName}_${qId}_${index}.${ext}`;
+      const { error } = await supabase.storage.from("student-submissions").upload(path, blob, { upsert: true, contentType: item.type });
+      if (error) return item;
+      const { data } = supabase.storage.from("student-submissions").getPublicUrl(path);
+      if (!data?.publicUrl) return item;
+      return { ...item, data: data.publicUrl };
+    } catch {
+      return item;
+    }
   }
 
   async function saveEssayGrade(submission: Submission, qId: string, score: number, feedback: string) {
@@ -824,6 +865,13 @@ export default function PhysicsArena() {
     const currentAnswers = answersRef.current;
     const currentExam = examRef.current;
     const score = currentExam.reduce((sum, q) => sum + getQuestionAutoScore(q, currentAnswers[q.id]), 0);
+    const storedAttachments: Record<string, AttachmentItem[]> = {};
+    for (const [qId, items] of Object.entries(studentAttachments)) {
+      storedAttachments[qId] = [];
+      for (let i = 0; i < items.length; i++) {
+        storedAttachments[qId].push(await uploadAttachmentIfPossible(examCodeId.trim() || "LOCAL_TEST", studentName.trim(), qId, items[i], i));
+      }
+    }
     setSubmitted(true);
     setSeconds(0);
     setTab("grading");
@@ -838,7 +886,7 @@ export default function PhysicsArena() {
       student_school: studentSchool.trim(),
       grade: studentGrade.trim(),
       exit_count: antiCheatWarnings,
-      attachments_data: studentAttachments,
+      attachments_data: storedAttachments,
       essay_grading: {},
       auto_score: score,
       essay_score: 0,
@@ -1462,7 +1510,19 @@ export default function PhysicsArena() {
                                 <div style={{ fontSize: "13px", background: "#f8fafc", padding: "10px", borderRadius: "6px" }}>
                                   <div><b>Bài làm tự luận của học sinh:</b></div>
                                   <div style={{ background: "#fff", padding: "8px", border: "1px solid #cbd5e1", borderRadius: "4px", marginTop: "4px", whiteSpace: "pre-wrap", color: "#1e293b" }}>{stuAns || "Học sinh không làm phần này."}</div>
-                                  {viewingSubmission.attachments_data?.[q.id] && <div style={{ marginTop: "8px", padding: "8px", background: "#fff", border: "1px solid #93c5fd", borderRadius: "6px" }}><b>📎 File đính kèm:</b> <a href={viewingSubmission.attachments_data[q.id].data} target="_blank" rel="noreferrer">{viewingSubmission.attachments_data[q.id].name}</a>{viewingSubmission.attachments_data[q.id].type.startsWith("image/") && <img src={viewingSubmission.attachments_data[q.id].data} alt="Bài làm" style={{ display: "block", maxWidth: "100%", maxHeight: "300px", marginTop: "8px", borderRadius: "5px" }} />}</div>}
+                                  {normalizeAttachments(viewingSubmission.attachments_data?.[q.id]).length > 0 && (
+  <div style={{ marginTop: "8px", padding: "10px", background: "#fff", border: "1px solid #93c5fd", borderRadius: "6px" }}>
+    <b>📎 Tệp/hình vẽ bài làm:</b>
+    <div style={{ display: "grid", gap: "10px", marginTop: "8px" }}>
+      {normalizeAttachments(viewingSubmission.attachments_data?.[q.id]).map((att, ai) => (
+        <div key={ai} style={{ padding: "8px", border: "1px solid #e2e8f0", borderRadius: "6px", background: "#f8fafc" }}>
+          <div style={{ fontSize: "12px", marginBottom: "6px" }}><b>{att.source === "drawing" ? "✏️ Hình vẽ" : "📎 Tệp"}:</b> {att.name}</div>
+          {att.type.startsWith("image/") ? <img src={att.data} alt={att.name} style={{ display: "block", width: "100%", maxHeight: "520px", objectFit: "contain", background: "#fff", borderRadius: "5px" }} /> : <a href={att.data} target="_blank" rel="noreferrer">Mở tệp đính kèm</a>}
+        </div>
+      ))}
+    </div>
+  </div>
+)}
                                   <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: "8px", marginTop: "10px", alignItems: "start" }}>
                                     <div><label style={{ fontSize: "11px", fontWeight: "700", color: "#0f766e" }}>Điểm (tối đa {q.points}):</label><input type="number" min="0" max={q.points} step="0.01" defaultValue={viewingSubmission.essay_grading?.[q.id]?.score ?? 0} onChange={e => setEssayScores(prev => ({ ...prev, [q.id]: Math.min(q.points, Math.max(0, Number(e.target.value) || 0)) }))} style={{ width: "100%", padding: "7px", border: "1px solid #cbd5e1", borderRadius: "5px" }} /></div>
                                     <div><label style={{ fontSize: "11px", fontWeight: "700", color: "#0f766e" }}>Nhận xét:</label><textarea rows={2} defaultValue={viewingSubmission.essay_grading?.[q.id]?.feedback || ""} onChange={e => setEssayFeedbacks(prev => ({ ...prev, [q.id]: e.target.value }))} style={{ width: "100%", padding: "7px", border: "1px solid #cbd5e1", borderRadius: "5px" }} /></div>
@@ -1719,7 +1779,11 @@ export default function PhysicsArena() {
                       }}
                       onMouseUp={() => { isDrawingRef.current = false; }}
                       onMouseLeave={() => { isDrawingRef.current = false; }}
+                      onTouchStart={(e) => { e.preventDefault(); const t=e.touches[0]; isDrawingRef.current=true; const canvas=canvasRef.current; if(!canvas) return; const ctx=canvas.getContext("2d"); if(!ctx) return; const rect=canvas.getBoundingClientRect(); ctx.beginPath(); ctx.moveTo((t.clientX-rect.left)*(canvas.width/rect.width),(t.clientY-rect.top)*(canvas.height/rect.height)); }}
+                      onTouchMove={(e) => { e.preventDefault(); if(!isDrawingRef.current) return; const t=e.touches[0]; const canvas=canvasRef.current; if(!canvas) return; const ctx=canvas.getContext("2d"); if(!ctx) return; const rect=canvas.getBoundingClientRect(); ctx.lineTo((t.clientX-rect.left)*(canvas.width/rect.width),(t.clientY-rect.top)*(canvas.height/rect.height)); ctx.strokeStyle=toolRef.current === "eraser" ? "#fdfefe" : drawColorRef.current; ctx.lineWidth=toolRef.current === "eraser" ? 16 : drawWidthRef.current; ctx.lineCap="round"; ctx.lineJoin="round"; ctx.stroke(); }}
+                      onTouchEnd={() => { isDrawingRef.current = false; }}
                     />
+                    <div style={{ fontSize: "11px", color: "#64748b", marginTop: "6px" }}>Hình vẽ sẽ được lưu thành ảnh PNG và gắn trực tiếp vào đúng câu tự luận.</div>
                     <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
                       <button onClick={() => {
                         const canvas = canvasRef.current;
@@ -1734,8 +1798,7 @@ export default function PhysicsArena() {
                           setShowDrawingModal(false);
                           return;
                         }
-                        setAnswers(prev => ({ ...prev, [activeEssayQId]: (prev[activeEssayQId] || "") + ` [Đã đính kèm hình vẽ nháp]` }));
-                        setShowDrawingModal(false);
+                        addDrawingToEssay();
                       }} style={{ padding: "6px 14px", background: "#0d9488", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "12px" }}>Đưa hình vào bài tự luận</button>
                     </div>
                   </div>
@@ -1836,12 +1899,13 @@ export default function PhysicsArena() {
                               {q.section === "ESSAY" && (
                                 <div style={{ marginTop: "8px" }}>
                                   <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginBottom: "6px", background: "#edf2f7", padding: "6px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
-                                    <span style={{ fontSize: "11px", fontWeight: "700", color: "#475569", alignSelf: "center", marginRight: "4px" }}>Chèn ký hiệu:</span>
+                                    <span style={{ fontSize: "11px", fontWeight: "700", color: "#475569", alignSelf: "center", marginRight: "4px" }}>Công cụ:</span>
+                                    <button type="button" onClick={() => setShowEquationPanel(showEquationPanel === q.id ? null : q.id)} style={{ background: "#fff", border: "1px solid #7dd3fc", borderRadius: "4px", padding: "4px 8px", fontSize: "12px", fontWeight: "700", cursor: "pointer", color: "#0369a1" }}>∑ Công thức</button>
                                     {[
-                                      ["²", "𝑥²"], ["³", "𝑥³"], ["₁", "ₓ₁"], ["₂", "ₓ₂"], 
-                                      ["₊", "+"], ["₋", "-"], ["→", "→"], ["⇄", "⇄"], 
-                                      ["Δ", "Δ"], ["°C", "°C"], ["≤", "≤"], ["≥", "≥"], 
-                                      ["·", "·"], [" / ", " / "]
+                                      ["²", "x²"], ["³", "x³"], ["₁", "x₁"], ["₂", "x₂"], ["₃", "x₃"], ["₀", "x₀"],
+                                      ["±", "±"], ["≈", "≈"], ["≠", "≠"], ["≤", "≤"], ["≥", "≥"], ["√", "√"], ["∆", "∆"],
+                                      ["α", "α"], ["β", "β"], ["γ", "γ"], ["λ", "λ"], ["ρ", "ρ"], ["η", "η"], ["Ω", "Ω"],
+                                      ["→", "→"], ["⇄", "⇄"], ["°", "°"], ["·", "·"], ["×", "×"], ["÷", "÷"], ["/", "/"]
                                     ].map(([symbol, label]) => (
                                       <button 
                                         key={symbol}
@@ -1853,6 +1917,21 @@ export default function PhysicsArena() {
                                       </button>
                                     ))}
                                   </div>
+                                  {showEquationPanel === q.id && (
+                                    <div style={{ background: "#f0f9ff", border: "1px solid #7dd3fc", borderRadius: "7px", padding: "8px", marginBottom: "7px" }}>
+                                      <div style={{ fontSize: "11px", fontWeight: "800", color: "#0369a1", marginBottom: "6px" }}>CÔNG THỨC NHANH VẬT LÝ – HÓA HỌC – TOÁN</div>
+                                      <div style={{ display: "flex", gap: "5px", flexWrap: "wrap" }}>
+                                        {[
+                                          ["v = s/t", "v = s/t"], ["a = ∆v/∆t", "a = ∆v/∆t"], ["P = A/t", "P = A/t"], ["A = F·s", "A = F·s"],
+                                          ["Q = m·c·∆t", "Q = m·c·∆t"], ["I = U/R", "I = U/R"], ["U = I·R", "U = I·R"], ["P = U·I", "P = U·I"],
+                                          ["R = ρ·l/S", "R = ρ·l/S"], ["n = sin i/sin r", "n = sin i/sin r"], ["H₂O", "H₂O"], ["CO₂", "CO₂"],
+                                          ["H₂SO₄", "H₂SO₄"], ["CaCO₃", "CaCO₃"], ["Ca²⁺", "Ca²⁺"], ["SO₄²⁻", "SO₄²⁻"], ["2H₂ + O₂ → 2H₂O", "2H₂ + O₂ → 2H₂O"]
+                                        ].map(([symbol, label]) => (
+                                          <button key={symbol} type="button" onClick={() => insertSymbolToEssay(q.id, symbol)} style={{ background: "#fff", border: "1px solid #bae6fd", borderRadius: "5px", padding: "4px 7px", fontSize: "12px", cursor: "pointer", color: "#0f172a" }}>{label}</button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
                                   <textarea 
                                     ref={el => { essayTextareaRefs.current[q.id] = el; }}
                                     rows={4}
@@ -1974,3 +2053,4 @@ export default function PhysicsArena() {
     </main>
   );
 }
+
