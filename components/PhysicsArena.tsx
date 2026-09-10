@@ -57,6 +57,7 @@ type Submission = {
 type PublishedExam = {
   id: string;
   title?: string | null;
+  topic?: string | null;
   duration?: number | null;
   link: string;
 };
@@ -226,10 +227,11 @@ function parseRow(r: Record<string, any>): Question {
 }
 export default function PhysicsArena() {
   const [mode, setMode] = useState<"teacher" | "student">("teacher");
-  const [tab, setTab] = useState<"bank" | "matrix" | "exam" | "grading" | "stats" | "ai_gen">("bank");
+  const [tab, setTab] = useState<"bank" | "matrix" | "exam" | "grading" | "stats" | "ai_gen" | "teacher_accounts">("bank");
   const [questions, setQuestions] = useState<Question[]>(seed);
   const [matrix, setMatrix] = useState<Matrix>(defaultMatrix);
-  const [examMinutes, setExamMinutes] = useState<number>(45); 
+  const [examMinutes, setExamMinutes] = useState<number>(45);
+  const [examTopic, setExamTopic] = useState<string>("Chủ đề kiểm tra"); 
   const [exam, setExam] = useState<Question[]>([]);
   const [examCodeId, setExamCodeId] = useState<string>("KHTN_" + Math.random().toString(36).substring(2, 10).toUpperCase());
   const [answers, setAnswers] = useState<Record<string, any>>({});
@@ -267,6 +269,10 @@ export default function PhysicsArena() {
   const aiDocumentInputRef = useRef<HTMLInputElement | null>(null);
   // Published exam link history additions
   const [publishedExams, setPublishedExams] = useState<PublishedExam[]>([]);
+  const [teacherPasswordOld, setTeacherPasswordOld] = useState("");
+  const [teacherPasswordNew, setTeacherPasswordNew] = useState("");
+  const [teacherPasswordConfirm, setTeacherPasswordConfirm] = useState("");
+  const [isChangingTeacherPassword, setIsChangingTeacherPassword] = useState(false);
   const [isLoadingPublishedExams, setIsLoadingPublishedExams] = useState(false);
 
   // Student Review & Lookup state additions
@@ -331,7 +337,7 @@ export default function PhysicsArena() {
           setNotice("Chưa cấu hình Supabase. Hãy kiểm tra biến môi trường trên Vercel.");
           return;
         }
-        const { data, error } = await supabase.from("exams").select("questions_data, duration").eq("id", examId).single();
+        const { data, error } = await supabase.from("exams").select("questions_data, duration, topic, title").eq("id", examId).single();
         if (error) {
           setNotice("Không tải được đề thi: " + error.message);
           return;
@@ -341,6 +347,7 @@ export default function PhysicsArena() {
           const duration = Number(data.duration || 45);
           setExam(loadedExam);
           setExamMinutes(duration);
+          setExamTopic(String(data?.topic || data?.title || "Chủ đề kiểm tra"));
           deadlineRef.current = null;
           setExamStarted(false);
           setSeconds(duration * 60);
@@ -442,7 +449,7 @@ export default function PhysicsArena() {
     setIsLoadingPublishedExams(true);
     const { data, error } = await supabase
       .from("exams")
-      .select("id, title, duration")
+      .select("id, title, topic, duration")
       .order("id", { ascending: false });
     setIsLoadingPublishedExams(false);
     if (error) {
@@ -453,6 +460,7 @@ export default function PhysicsArena() {
       (data || []).map((item: any) => ({
         id: String(item.id),
         title: item.title,
+        topic: item.topic,
         duration: Number(item.duration || 0),
         link: `${window.location.origin}/?exam=${encodeURIComponent(String(item.id))}`
       }))
@@ -564,11 +572,12 @@ export default function PhysicsArena() {
     setLookupResult(foundSub);
     const { data: examData, error: examError } = await supabase
       .from("exams")
-      .select("questions_data")
+      .select("questions_data, topic, title")
       .eq("id", lookupExamCode.trim())
       .single();
     if (!examError && examData?.questions_data) {
       setLookupQuestions(examData.questions_data as Question[]);
+      setExamTopic(String(examData.topic || examData.title || "Chủ đề kiểm tra"));
     } else {
       setLookupQuestions([]);
     }
@@ -613,6 +622,7 @@ export default function PhysicsArena() {
     const { error } = await supabase.from("exams").upsert([{
       id: examCodeId.trim(),
       title: "Kiểm tra Khoa học tự nhiên",
+      topic: examTopic.trim() || "Chủ đề kiểm tra",
       duration: examMinutes,
       questions_data: exam
     }]);
@@ -702,7 +712,10 @@ export default function PhysicsArena() {
     const { data, error } = await supabase.from("student_submissions").select("*").eq("student_class", className.trim()).order("submitted_at", { ascending: true });
     if (error) { setNotice("Không tải được kết quả theo lớp: " + error.message); return; }
     if (!data?.length) { setNotice(`Lớp ${className} chưa có bài nộp.`); return; }
-    const rows = data.map((s: any, i: number) => ({ STT: i + 1, Mã_đề: s.exam_id, Họ_tên: s.student_name, Khối: s.grade || "", Lớp: s.student_class, Trường: s.student_school, Điểm_tự_động: Number(s.auto_score || 0), Điểm_tự_luận: Number(s.essay_score || 0), Tổng_điểm: Number(s.final_score ?? s.auto_score ?? 0), Số_lần_thoát: Number(s.exit_count || 0), Thời_gian_nộp: s.submitted_at }));
+    const examIds = Array.from(new Set(data.map((s: any) => String(s.exam_id))));
+    const { data: examRows } = await supabase.from("exams").select("id, topic, title").in("id", examIds);
+    const topicMap = new Map((examRows || []).map((e: any) => [String(e.id), String(e.topic || e.title || "")])) ;
+    const rows = data.map((s: any, i: number) => ({ STT: i + 1, Mã_đề: s.exam_id, Chủ_đề: topicMap.get(String(s.exam_id)) || "", Họ_tên: s.student_name, Khối: s.grade || "", Lớp: s.student_class, Trường: s.student_school, Điểm_tự_động: Number(s.auto_score || 0), Điểm_tự_luận: Number(s.essay_score || 0), Tổng_điểm: Number(s.final_score ?? s.auto_score ?? 0), Số_lần_thoát: Number(s.exit_count || 0), Thời_gian_nộp: s.submitted_at }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Kết quả");
     XLSX.writeFile(wb, `Ket_qua_lop_${className.replace(/[^a-zA-Z0-9_-]/g, "_")}.xlsx`);
@@ -724,6 +737,7 @@ export default function PhysicsArena() {
     const { error } = await supabase.from('exams').upsert([{ 
       id: examCodeId.trim(), 
       title: "Kiểm tra Khoa học tự nhiên", 
+      topic: examTopic.trim() || "Chủ đề kiểm tra",
       duration: examMinutes,
       questions_data: exam 
     }]);
@@ -908,7 +922,7 @@ export default function PhysicsArena() {
       return;
     }
     const { data, error } = await supabase.from("student_submissions")
-      .select("id, exam_id, student_name, student_class, student_school, auto_score, essay_score, final_score, answers_data, submitted_at")
+      .select("id, exam_id, student_name, student_class, student_school, grade, auto_score, essay_score, final_score, answers_data, attachments_data, essay_grading, exit_count, submitted_at")
       .eq("exam_id", examCodeId.trim())
       .order("submitted_at", { ascending: false });
     if (error) { setNotice("Không tải được kết quả: " + error.message); return; }
@@ -917,8 +931,8 @@ export default function PhysicsArena() {
   function exportSubmissionsExcel() {
     if (!submissions.length) { setNotice("Chưa có kết quả để xuất Excel."); return; }
     const rows = submissions.map((s, i) => ({
-      STT: i + 1, Họ_tên: s.student_name, Lớp: s.student_class, Trường: s.student_school,
-      Điểm_tự_động: s.auto_score, Điểm_tự_luận: s.essay_score ?? 0, Tổng_điểm: s.final_score ?? s.auto_score,
+      STT: i + 1, Mã_đề: s.exam_id, Chủ_đề: examTopic || "", Họ_tên: s.student_name, Khối: s.grade || "", Lớp: s.student_class, Trường: s.student_school,
+      Điểm_tự_động: s.auto_score, Điểm_tự_luận: s.essay_score ?? 0, Tổng_điểm: s.final_score ?? s.auto_score, Số_lần_thoát: s.exit_count ?? 0,
       Thời_gian_nộp: s.submitted_at
     }));
     const wb = XLSX.utils.book_new();
@@ -959,10 +973,13 @@ export default function PhysicsArena() {
           {mode === "teacher" ? (
             <button onClick={() => setMode("student")} style={{ padding: "8px 14px", background: "#f0fdf4", border: "1px solid #5eead4", borderRadius: "8px", cursor: "pointer", fontWeight: "700", color: "#0f766e" }}>🔓 Thoát quyền GV</button>
           ) : (
-            <button onClick={() => {
+            <button onClick={async () => {
               const pass = prompt("Nhập mật khẩu giáo viên:");
-              if (pass === "123456") setMode("teacher");
-              else if (pass !== null) alert("Sai mật khẩu!");
+              if (pass === null) return;
+              if (!supabase) { alert("Chưa cấu hình Supabase."); return; }
+              const { data, error } = await supabase.rpc("verify_teacher_password", { p_password: pass });
+              if (error) { alert("Không kiểm tra được mật khẩu: " + error.message); return; }
+              if (data === true) setMode("teacher"); else alert("Sai mật khẩu giáo viên!");
             }} style={{ padding: "8px 14px", background: "#f0fdf4", border: "1px solid #5eead4", borderRadius: "8px", cursor: "pointer", fontWeight: "700", color: "#0f766e" }}>🔒 Giáo viên</button>
           )}
           <button onClick={() => setMode("student")} style={{ padding: "8px 14px", background: mode === "student" ? "#0d9488" : "#f0fdf4", color: mode === "student" ? "#fff" : "#0f766e", border: "1px solid #5eead4", borderRadius: "8px", cursor: "pointer", fontWeight: "700" }}>👨🎓 Học sinh</button>
@@ -979,7 +996,8 @@ export default function PhysicsArena() {
               ["matrix", "🧩", "Ma trận & tạo đề"],
               ["exam", "📝", "Xem & Sửa đề"],
               ["grading", "✍️", "Chấm bài tự luận"],
-              ["stats", "📊", "Thống kê phổ điểm"]
+              ["stats", "📊", "Thống kê phổ điểm"],
+              ["teacher_accounts", "🔐", "Quản lý mật khẩu GV"]
             ].map(([id, icon, label]) => (
               <button key={id} onClick={() => setTab(id as any)} style={{ width: "100%", textAlign: "left", padding: "12px 14px", background: tab === id ? "#ccfbf1" : "transparent", color: tab === id ? "#115e59" : "#334155", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: tab === id ? "700" : "500", display: "flex", gap: "10px", marginBottom: "6px", transition: "all 0.2s" }}>
                 <span>{icon}</span>{label}
@@ -1214,6 +1232,12 @@ export default function PhysicsArena() {
                     <button onClick={handlePublishAndGetLink} style={{ background: "#0284c7", color: "#fff", border: "none", padding: "10px 16px", borderRadius: "8px", fontWeight: "600", cursor: "pointer" }}>🔗 Xuất link gửi học sinh</button>
                   </div>
                 </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px", marginBottom: "14px", background: "#ecfeff", padding: "12px", borderRadius: "8px", border: "1px solid #67e8f9" }}>
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: "800", color: "#0e7490", display: "block", marginBottom: "5px" }}>📚 Chủ đề kiểm tra:</label>
+                    <input type="text" value={examTopic} onChange={e => setExamTopic(e.target.value)} placeholder="VD: Chương 3 – Tốc độ" style={{ width: "100%", padding: "9px 10px", borderRadius: "6px", border: "1px solid #67e8f9", background: "#fff", fontSize: "13px" }} />
+                  </div>
+                </div>
                 {(Object.keys(matrix) as Section[]).map(sec => (
                   <div key={sec} style={{ display: "grid", gridTemplateColumns: "220px repeat(4, 1fr)", gap: "12px", alignItems: "center", marginBottom: "12px", background: "#f8fafc", padding: "12px", borderRadius: "8px", border: "1px solid #cbd5e1" }}>
                     <strong style={{ color: "#0f766e", fontSize: "13px" }}>{sectionLabel[sec]}</strong>
@@ -1244,7 +1268,7 @@ export default function PhysicsArena() {
                     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                       {publishedExams.map(item => (
                         <div key={item.id} style={{ display: "grid", gridTemplateColumns: "140px 1fr auto", gap: "10px", alignItems: "center", background: "#fff", padding: "10px", borderRadius: "7px", border: "1px solid #e2e8f0" }}>
-                          <div><b style={{ color: "#0f766e", fontSize: "12px" }}>{item.id}</b><div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "2px" }}>{item.duration ? `${item.duration} phút` : "Không rõ thời gian"}</div></div>
+                          <div><b style={{ color: "#0f766e", fontSize: "12px" }}>{item.id}</b><div style={{ fontSize: "10px", color: "#334155", marginTop: "2px" }}>{item.topic || "Chưa đặt chủ đề"}</div><div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "2px" }}>{item.duration ? `${item.duration} phút` : "Không rõ thời gian"}</div></div>
                           <input readOnly value={item.link} onFocus={e => e.currentTarget.select()} style={{ width: "100%", padding: "7px 9px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "11px", color: "#334155", background: "#f8fafc" }} />
                           <div style={{ display: "flex", gap: "6px" }}>
                             <button onClick={() => window.open(item.link, "_blank", "noopener,noreferrer")} style={{ background: "#eff6ff", color: "#1d4ed8", border: "1px solid #93c5fd", padding: "7px 9px", borderRadius: "6px", cursor: "pointer", fontSize: "11px", fontWeight: "700" }}>Mở</button>
@@ -1463,7 +1487,7 @@ export default function PhysicsArena() {
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "2px solid #0d9488", paddingBottom: "12px", marginBottom: "16px" }}>
                         <div>
                           <h3 style={{ margin: 0, color: "#0f766e", fontSize: "18px" }}>Chi tiết bài làm: {viewingSubmission.student_name} ({viewingSubmission.student_class})</h3>
-                          <span style={{ fontSize: "12px", color: "#64748b" }}>Trường: {viewingSubmission.student_school || "Không rõ"} · Nộp lúc: {new Date(viewingSubmission.submitted_at).toLocaleString("vi-VN")}</span>
+                          <span style={{ fontSize: "12px", color: "#64748b" }}>Khối: {viewingSubmission.grade || ""} · Trường: {viewingSubmission.student_school || "Không rõ"} · Rời trang: {Number(viewingSubmission.exit_count || 0)} lần · Nộp lúc: {new Date(viewingSubmission.submitted_at).toLocaleString("vi-VN")}</span>
                         </div>
                         <button onClick={() => setViewingSubmission(null)} style={{ background: "none", border: "none", fontSize: "20px", cursor: "pointer", fontWeight: "bold", color: "#64748b" }}>✕</button>
                       </div>
@@ -1542,6 +1566,32 @@ export default function PhysicsArena() {
                 )}
               </div>
             )}
+            {tab === "teacher_accounts" && (
+              <div>
+                <h2 style={{ fontSize: "20px", color: "#0f766e", marginBottom: "8px" }}>🔐 Quản lý mật khẩu giáo viên</h2>
+                <p style={{ color: "#64748b", fontSize: "13px" }}>Mật khẩu được lưu dưới dạng mã băm trong Supabase, không còn ghi cứng trong mã nguồn. Giáo viên khác có thể dùng mật khẩu này để mở quyền giáo viên trên cùng hệ thống.</p>
+                <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "10px", border: "1px solid #cbd5e1", maxWidth: "620px" }}>
+                  <div style={{ display: "grid", gap: "10px" }}>
+                    <input type="password" value={teacherPasswordOld} onChange={e => setTeacherPasswordOld(e.target.value)} placeholder="Mật khẩu hiện tại" style={{ padding: "9px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
+                    <input type="password" value={teacherPasswordNew} onChange={e => setTeacherPasswordNew(e.target.value)} placeholder="Mật khẩu mới (tối thiểu 6 ký tự)" style={{ padding: "9px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
+                    <input type="password" value={teacherPasswordConfirm} onChange={e => setTeacherPasswordConfirm(e.target.value)} placeholder="Nhập lại mật khẩu mới" style={{ padding: "9px", border: "1px solid #cbd5e1", borderRadius: "6px" }} />
+                    <button disabled={isChangingTeacherPassword} onClick={async () => {
+                      if (!supabase) { setNotice("Chưa cấu hình Supabase."); return; }
+                      if (teacherPasswordNew.length < 6) { setNotice("Mật khẩu mới cần ít nhất 6 ký tự."); return; }
+                      if (teacherPasswordNew !== teacherPasswordConfirm) { setNotice("Mật khẩu nhập lại không khớp."); return; }
+                      setIsChangingTeacherPassword(true);
+                      const { data, error } = await supabase.rpc("change_teacher_password", { p_old_password: teacherPasswordOld, p_new_password: teacherPasswordNew });
+                      setIsChangingTeacherPassword(false);
+                      if (error) { setNotice("Không đổi được mật khẩu: " + error.message); return; }
+                      if (data !== true) { setNotice("Mật khẩu hiện tại không đúng."); return; }
+                      setTeacherPasswordOld(""); setTeacherPasswordNew(""); setTeacherPasswordConfirm("");
+                      setNotice("✅ Đã đổi mật khẩu giáo viên. Mật khẩu mới có hiệu lực ngay trên hệ thống.");
+                    }} style={{ background: "#0d9488", color: "#fff", border: "none", padding: "10px 14px", borderRadius: "7px", fontWeight: "700", cursor: isChangingTeacherPassword ? "wait" : "pointer" }}>{isChangingTeacherPassword ? "⏳ Đang lưu..." : "💾 Đổi mật khẩu giáo viên"}</button>
+                  </div>
+                  <div style={{ marginTop: "12px", fontSize: "11px", color: "#64748b", lineHeight: 1.5 }}>Mật khẩu mặc định ban đầu của bản V1.5 là <b>123456</b> nếu cô chạy migration V1.5 đúng như hướng dẫn. Cô nên đổi ngay sau khi triển khai.</div>
+                </div>
+              </div>
+            )}
             {tab === "stats" && (
               <div>
                 <h2 style={{ fontSize: "20px", color: "#0f766e", marginBottom: "10px" }}>Thống kê phổ điểm theo khối</h2>
@@ -1606,6 +1656,7 @@ export default function PhysicsArena() {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "2px solid #2dd4bf", paddingBottom: "12px", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
                     <div>
                       <h4 style={{ margin: 0, color: "#0f766e", fontSize: "16px" }}>Kết quả bài làm: {lookupResult.student_name} ({lookupResult.student_class})</h4>
+                      <div style={{ fontSize: "12px", color: "#1d4ed8", fontWeight: "800", marginTop: "4px" }}>📚 Chủ đề: {examTopic || "Chưa xác định"}</div>
                       <span style={{ fontSize: "12px", color: "#64748b" }}>Trường: {lookupResult.student_school || "Không rõ"} · Nộp lúc: {new Date(lookupResult.submitted_at).toLocaleString("vi-VN")}</span>
                     </div>
                     <div style={{ display: "flex", gap: "12px" }}>
@@ -1646,10 +1697,35 @@ export default function PhysicsArena() {
                             Câu {qIdx + 1} ({sectionLabel[q.section]} - {q.points}đ)
                           </div>
                           <div style={{ marginBottom: "8px", fontSize: "13px", color: "#334155" }}>{q.content}</div>
+                          {q.section === "MCQ" && q.options && (
+                            <div style={{ background: "#f8fafc", padding: "9px", borderRadius: "6px", marginBottom: "7px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                              {q.options.map(o => (
+                                <div key={o.key} style={{ fontSize: "13px", padding: "4px 6px", borderRadius: "4px", background: o.key === q.correctOption ? "#dcfce7" : o.key === stuAns ? "#fee2e2" : "transparent", fontWeight: o.key === q.correctOption || o.key === stuAns ? "700" : "400" }}>
+                                  <b>{o.key}.</b> {o.text} {o.key === q.correctOption ? " ✓ Đáp án chuẩn" : ""} {o.key === stuAns && o.key !== q.correctOption ? " ✕ Em chọn" : ""}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {q.section === "TF" && q.subTfs && (
+                            <div style={{ background: "#f8fafc", padding: "9px", borderRadius: "6px", marginBottom: "7px", display: "flex", flexDirection: "column", gap: "5px" }}>
+                              {q.subTfs.map(sub => { const u = stuAns?.[sub.id]; const ok = u === sub.key; return (
+                                <div key={sub.id} style={{ fontSize: "13px", padding: "5px 6px", borderRadius: "4px", background: ok ? "#dcfce7" : "#fee2e2" }}>
+                                  <b>{sub.id.toUpperCase()}.</b> {sub.content}<br/>
+                                  <span>Em chọn: <b>{u === undefined ? "Chưa làm" : u ? "Đúng" : "Sai"}</b> · Đáp án: <b>{sub.key ? "Đúng" : "Sai"}</b> {ok ? "✓" : "✕"}</span>
+                                </div>
+                              ); })}
+                            </div>
+                          )}
                           <div style={{ fontSize: "13px", background: "#f8fafc", padding: "8px", borderRadius: "6px", display: "flex", flexDirection: "column", gap: "4px" }}>
                             <div>- Bạn đã chọn / trả lời: <b style={{ color: q.section === 'ESSAY' ? '#0284c7' : (isCorrect ? '#059669' : '#dc2626') }}>{stuAnsStr}</b></div>
                             {q.section !== 'ESSAY' && <div>- Đáp án chuẩn: <b style={{ color: "#059669" }}>{correctAnsStr}</b></div>}
                           </div>
+                          {q.section === "ESSAY" && normalizeAttachments(lookupResult.attachments_data?.[q.id]).length > 0 && (
+                            <div style={{ marginTop: "8px", background: "#f8fafc", padding: "9px", borderRadius: "6px", border: "1px solid #bfdbfe" }}>
+                              <b style={{ fontSize: "12px", color: "#1d4ed8" }}>📎 Tệp/hình vẽ đã nộp:</b>
+                              {normalizeAttachments(lookupResult.attachments_data?.[q.id]).map((att, ai) => att.type.startsWith("image/") ? <img key={ai} src={att.data} alt={att.name} style={{ display: "block", width: "100%", maxHeight: "420px", objectFit: "contain", background: "#fff", marginTop: "7px", borderRadius: "5px" }} /> : <a key={ai} href={att.data} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: "6px" }}>📎 {att.name}</a>)}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1662,6 +1738,7 @@ export default function PhysicsArena() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "2px solid #0d9488", paddingBottom: "15px", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
                 <div>
                   <h2 style={{ margin: 0, color: "#0f766e", fontSize: "20px" }}>Bài kiểm tra Khoa học tự nhiên ({examCodeId})</h2>
+                  <div style={{ marginTop: "6px", fontSize: "13px", color: "#1d4ed8", fontWeight: "800" }}>📚 Chủ đề: {examTopic || "Chưa xác định"}</div>
                   <p style={{ margin: "4px 0 0 0", fontSize: "13px", color: "#64748b" }}>Điền thông tin và hoàn thành đầy đủ các phần câu hỏi bên dưới.</p>
                 </div>
                 <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
@@ -2039,6 +2116,16 @@ export default function PhysicsArena() {
                       <div style={{ fontWeight: "700", color: "#0f766e", marginBottom: "4px", fontSize: "13px" }}>
                         {item.questionText} ({item.question.points}đ)
                       </div>
+                      {item.question.section === "MCQ" && item.question.options && (
+                        <div style={{ background: "#fff", padding: "8px", borderRadius: "6px", marginBottom: "7px", border: "1px solid #e2e8f0" }}>
+                          {item.question.options.map(o => <div key={o.key} style={{ padding: "4px 6px", borderRadius: "4px", fontSize: "13px", background: o.key === item.question.correctOption ? "#dcfce7" : o.key === item.studentAnswer ? "#fee2e2" : "transparent", fontWeight: o.key === item.question.correctOption || o.key === item.studentAnswer ? "700" : "400" }}><b>{o.key}.</b> {o.text} {o.key === item.question.correctOption ? " ✓" : ""} {o.key === item.studentAnswer && o.key !== item.question.correctOption ? " ✕" : ""}</div>)}
+                        </div>
+                      )}
+                      {item.question.section === "TF" && item.question.subTfs && (
+                        <div style={{ background: "#fff", padding: "8px", borderRadius: "6px", marginBottom: "7px", border: "1px solid #e2e8f0" }}>
+                          {item.question.subTfs.map(sub => { const u = answers[sub.id] ; return <div key={sub.id} style={{ padding: "4px 6px", fontSize: "13px" }}><b>{sub.id.toUpperCase()}.</b> {sub.content} — Em chọn: <b>{u === undefined ? "Chưa làm" : u ? "Đúng" : "Sai"}</b> · Đáp án: <b>{sub.key ? "Đúng" : "Sai"}</b></div>; })}
+                        </div>
+                      )}
                       <div style={{ fontSize: "13px", color: "#334155" }}>
                         <div>- Bạn chọn/trả lời: <b>{item.studentAnswer}</b></div>
                         {item.question.section !== "ESSAY" && <div>- Đáp án chuẩn: <b style={{ color: "#059669" }}>{item.correctAnswer}</b></div>}
