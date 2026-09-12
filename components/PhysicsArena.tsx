@@ -1715,6 +1715,13 @@ export default function PhysicsArena() {
                               {normalizeAttachments(lookupResult.attachments_data?.[q.id]).map((att, ai) => att.type.startsWith("image/") ? <img key={ai} src={att.data} alt={att.name} style={{ display: "block", width: "100%", maxHeight: "420px", objectFit: "contain", background: "#fff", marginTop: "7px", borderRadius: "5px" }} /> : <a key={ai} href={att.data} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: "6px" }}>📎 {att.name}</a>)}
                             </div>
                           )}
+                          {q.section === "ESSAY" && (lookupResult.essay_grading?.[q.id] || lookupResult.essay_score != null) && (
+                            <div style={{ marginTop: "8px", background: "#f0fdf4", padding: "9px", borderRadius: "6px", border: "1px solid #86efac" }}>
+                              <b style={{ fontSize: "12px", color: "#166534" }}>👩‍🏫 Giáo viên chấm:</b>
+                              <div style={{ marginTop: "5px", fontSize: "13px" }}>Điểm câu: <b>{Number(lookupResult.essay_grading?.[q.id]?.score ?? 0).toFixed(2)}đ</b></div>
+                              <div style={{ marginTop: "5px", fontSize: "13px", whiteSpace: "pre-wrap" }}>Nhận xét: <b>{lookupResult.essay_grading?.[q.id]?.feedback || "Chưa có nhận xét cho câu này."}</b></div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -2112,7 +2119,7 @@ export default function PhysicsArena() {
                       )}
                       {item.question.section === "TF" && item.question.subTfs && (
                         <div style={{ background: "#fff", padding: "8px", borderRadius: "6px", marginBottom: "7px", border: "1px solid #e2e8f0" }}>
-                          {item.question.subTfs.map(sub => { const u = answers[sub.id] ; return <div key={sub.id} style={{ padding: "4px 6px", fontSize: "13px" }}><b>{sub.id.toUpperCase()}.</b> {sub.content} — Em chọn: <b>{u === undefined ? "Chưa làm" : u ? "Đúng" : "Sai"}</b> · Đáp án: <b>{sub.key ? "Đúng" : "Sai"}</b></div>; })}
+                          {item.question.subTfs.map(sub => { const u = answers[item.question.id]?.[sub.id] ; return <div key={sub.id} style={{ padding: "4px 6px", fontSize: "13px" }}><b>{sub.id.toUpperCase()}.</b> {sub.content} — Em chọn: <b>{u === undefined ? "Chưa làm" : u ? "Đúng" : "Sai"}</b> · Đáp án: <b>{sub.key ? "Đúng" : "Sai"}</b></div>; })}
                         </div>
                       )}
                       <div style={{ fontSize: "13px", color: "#334155" }}>
