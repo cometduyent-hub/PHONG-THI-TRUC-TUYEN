@@ -945,8 +945,7 @@ const exportSubmissionsExcel = () => {
   const examCode = submissions[0]?.exam_id || "KHTN";
   XLSX.writeFile(wb, `Ket_qua_${examCode}.xlsx`);
 };
-  return (
-       <main className="app-shell" style={{ 
+ return <main className="app-shell" style={{
       fontFamily: "Inter, system-ui, Arial, sans-serif", 
       background: "linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)", 
       minHeight: "100vh", 
@@ -960,7 +959,7 @@ const exportSubmissionsExcel = () => {
         boxShadow: "0 10px 25px -5px rgba(13, 148, 136, 0.15)" 
       }}>
         <div className="brand" style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-          <span className="atom" style={{ fontSize: "32px", background: "#ccfbf1", padding: "8px 12px", borderRadius: "14px", border: "2px solid #2dd4bf" }}>⚛️</span>
+          <span className="atom" style={{ fontSize: "32px", background: "#ccfbf1", padding: "8px 12px", borderRadius: "14px", border: "2px solid #2dd4bf" }}></span>
           <div>
             <h1 style={{ 
               fontSize: "22px", margin: 0, fontWeight: "900", color: "#0f766e",
