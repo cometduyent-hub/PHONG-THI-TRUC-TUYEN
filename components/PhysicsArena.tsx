@@ -2133,9 +2133,7 @@ export default function PhysicsArena() {
           ))}
         </section>
       )}
-    </main>
-  );
-}
+    
 return(<form onSubmit={handleGenerateFromAI} className="space-y-4">
       <div>
         <label className="block text-sm font-medium mb-1">Chủ đề bài học</label>
