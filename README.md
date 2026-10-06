@@ -65,3 +65,27 @@ npm run dev
 ## 6. Lưu ý V1
 
 V1 sử dụng Supabase anon key phía trình duyệt và lưu dữ liệu đề có đáp án. Đây chưa phải kiến trúc chống gian lận tuyệt đối. V2 nên chuyển đáp án/chấm điểm sang server-side Edge Function/RPC và dùng Supabase Auth + RLS chặt chẽ.
+
+
+## 7. AI tạo đề
+
+Phiên bản nâng cấp bổ sung AI tạo câu hỏi và AI tạo toàn bộ đề theo ma trận.
+
+- API server: `/api/ai/generate`
+- AI key dùng phía server: `GEMINI_API_KEY`
+- Có thể đặt `GEMINI_MODEL`; mặc định là `gemini-2.5-flash`.
+- AI tạo toàn bộ đề theo đúng ma trận NB/TH/VD/VDC và 4 dạng MCQ/TF/SHORT/ESSAY.
+- Đề AI tạo xong sẽ chuyển sang **Xem & Sửa đề** để giáo viên kiểm tra trước khi SAVE và phát mã đề.
+- Chức năng tạo đề từ ngân hàng cũ vẫn giữ nguyên.
+- Tài liệu TXT/MD/CSV/JSON/XLSX được trích xuất nội dung; PDF/hình ảnh có thể gửi trực tiếp cho AI theo khả năng của model.
+- Không đưa `GEMINI_API_KEY` hoặc các biến `NEXT_PUBLIC_*` chứa khóa thật vào GitHub. Khóa thật phải đặt trong Vercel Environment Variables.
+
+### Biến môi trường Vercel
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+GEMINI_API_KEY=...
+# tùy chọn
+GEMINI_MODEL=gemini-2.5-flash
+```
