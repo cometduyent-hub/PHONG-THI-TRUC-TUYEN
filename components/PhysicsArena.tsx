@@ -2136,7 +2136,7 @@ export default function PhysicsArena() {
     </main>
   );
 }
-<form onSubmit={handleGenerateFromAI} className="space-y-4">
+return(<form onSubmit={handleGenerateFromAI} className="space-y-4">
       <div>
         <label className="block text-sm font-medium mb-1">Chủ đề bài học</label>
         <input
@@ -2224,4 +2224,4 @@ export default function PhysicsArena() {
         </div>
       )}
   );
-}
+})
