@@ -917,7 +917,7 @@ export default function PhysicsArena() {
     if (error) { setNotice("Không tải được kết quả: " + error.message); return; }
     setSubmissions((data || []) as Submission[]);
   }
-  function exportSubmissionsExcel() {
+ const exportSubmissionsExcel = () => {
     if (!submissions.length) { setNotice("Chưa có kết quả để xuất Excel."); return; }
     const rows = submissions.map((s, i) => ({
       STT: i + 1, Mã_đề: s.exam_id, Chủ_đề: examTopic || "", Họ_tên: s.student_name, Khối: s.grade || "", Lớp: s.student_class, Trường: s.student_school,
@@ -928,8 +928,10 @@ export default function PhysicsArena() {
     const ws = XLSX.utils.json_to_sheet(rows);
     XLSX.utils.book_append_sheet(wb, ws, "Kết quả");
     XLSX.writeFile(wb, `Ket_qua_${examCodeId.trim() || "KHTN"}.xlsx`);
-  }
+  };
+
   return (
+    <main className="app-shell" style={{
     <main className="app-shell" style={{ 
       fontFamily: "Inter, system-ui, Arial, sans-serif", 
       background: "linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)", 
