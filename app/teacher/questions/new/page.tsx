@@ -1,71 +1,144 @@
 "use client";
-import {useState} from "react";
-export default function NewQuestion(){const [type,setType]=useState("multiple_choice");return <><div className="page-title"><div><h1>Thêm câu hỏi</h1><p className="muted">V1 cung cấp biểu mẫu nền; V2 sẽ lưu trực tiếp vào Supabase.</p></div></div><div className="card"><div className="form"><div><label className="label">Dạng câu hỏi</label><select className="select" value={type} onChange={e=>setType(e.target.value)}><option value="multiple_choice">Nhiều lựa chọn</option><option value="true_false">Đúng/Sai</option><option value="short_answer">Trả lời ngắn</option><option value="essay">Tự luận</option></select></div><div><label className="label">Lớp</label><select className="select"><option>KHTN 6</option><option>KHTN 7</option><option>KHTN 8</option><option>KHTN 9</option></select></div><div><label className="label">Nội dung câu hỏi</label><textarea className="textarea" placeholder="Nhập câu hỏi..."></textarea></div><div><label className="label">Chủ đề</label><input className="input" placeholder="Ví dụ: Áp suất chất lỏng"/></div><button className="btn btn-primary" type="button">Lưu câu hỏi (V2)</button></div></div></>}
-'use client';
 
-import { useState } from 'react';
+import React, { useState } from "react";
 
-// Khai báo kiểu dữ liệu cho câu hỏi nhận về từ AI
-interface Question {
-  content: string;
-  options: string[];
-  correctAnswer: number;
-  explanation: string;
-}
-
-export default function AIGeneratePage() {
-  // State quản lý Form nhập liệu
-  const [topic, setTopic] = useState('');
-  const [grade, setGrade] = useState('6');
-  const [count, setCount] = useState(5);
-  const [difficulty, setDifficulty] = useState('Thông hiểu');
-
-  // State quản lý trạng thái tải và danh sách câu hỏi nhận về
+export default function NewQuestionPage() {
+  const [topic, setTopic] = useState("");
+  const [grade, setGrade] = useState("6");
+  const [section, setSection] = useState("MCQ");
+  const [count, setCount] = useState(3);
+  const [documentText, setDocumentText] = useState("");
+  const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
-  const [questions, setQuestions] = useState<Question[]>([]);
+  const [questions, setQuestions] = useState<any[]>([]);
 
-  // HÀM XỬ LÝ CHÍNH Ở BƯỚC 4
   const handleGenerateFromAI = async (e: React.FormEvent) => {
-    e.preventDefault(); // Ngăn trang reload khi ấn Submit Form
-
-    if (!topic.trim()) {
-      alert('Vui lòng nhập chủ đề câu hỏi!');
-      return;
-    }
-
-    setLoading(true); // Bật trạng thái Loading
-    setQuestions([]);  // Xóa danh sách câu hỏi cũ (nếu có)
-
+    e.preventDefault();
+    setLoading(true);
     try {
-      // Gọi API Route đã viết ở Bước 3
-      const response = await fetch('/api/teacher/generate-questions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          topic,
-          grade,
-          count: Number(count),
-          difficulty,
-        }),
+      const formData = new FormData();
+      formData.append("topic", topic);
+      formData.append("grade", grade);
+      formData.append("section", section);
+      formData.append("count", count.toString());
+      formData.append("documentText", documentText);
+      if (file) {
+        formData.append("file", file);
+      }
+
+      const res = await fetch("/api/ai/generate", {
+        method: "POST",
+        body: formData,
       });
 
-      const result = await response.json();
-
-      if (result.success) {
-        // Cập nhật mảng câu hỏi nhận được vào State để hiển thị ra giao diện
-        setQuestions(result.data);
+      const data = await res.json();
+      if (res.ok && data.questions) {
+        setQuestions(data.questions);
       } else {
-        alert(`Lỗi từ hệ thống: ${result.message}`);
+        alert("Lỗi khi tạo câu hỏi: " + (data.error || "Không rõ lỗi"));
       }
-    } catch (error) {
-      console.error('Lỗi kết nối:', error);
-      alert('Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại đường truyền!');
+    } catch (err: any) {
+      alert("Lỗi kết nối AI: " + err.message);
     } finally {
-      setLoading(false); // Tắt trạng thái Loading dù thành công hay thất bại
+      setLoading(false);
     }
   };
 
   return (
-    // Phần giao diện bên dưới...
+    <div className="max-w-4xl mx-auto p-6 bg-white shadow rounded-lg my-8">
+      <h1 className="text-2xl font-bold mb-4">Tạo câu hỏi tự động bằng AI</h1>
+      <form onSubmit={handleGenerateFromAI} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium mb-1">Chủ đề bài học</label>
+          <input
+            type="text"
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+            placeholder="Ví dụ: Quang hợp ở thực vật, Năng lượng..."
+            className="w-full p-2 border rounded"
+            required
+          />
+        </div>
+
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Khối lớp</label>
+            <select
+              value={grade}
+              onChange={(e) => setGrade(e.target.value)}
+              className="w-full p-2 border rounded"
+            >
+              <option value="6">Lớp 6</option>
+              <option value="7">Lớp 7</option>
+              <option value="8">Lớp 8</option>
+              <option value="9">Lớp 9</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Dạng câu hỏi</label>
+            <select
+              value={section}
+              onChange={(e) => setSection(e.target.value)}
+              className="w-full p-2 border rounded"
+            >
+              <option value="MCQ">Trắc nghiệm (MCQ)</option>
+              <option value="TF">Đúng / Sai (TF)</option>
+              <option value="SHORT">Trả lời ngắn (SHORT)</option>
+              <option value="ESSAY">Tự luận (ESSAY)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Số lượng câu</label>
+            <input
+              type="number"
+              min="1"
+              max="10"
+              value={count}
+              onChange={(e) => setCount(Number(e.target.value))}
+              className="w-full p-2 border rounded"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">Dán văn bản tài liệu (nếu có)</label>
+          <textarea
+            rows={4}
+            value={documentText}
+            onChange={(e) => setDocumentText(e.target.value)}
+            placeholder="Dán nội dung kiến thức bài học vào đây..."
+            className="w-full p-2 border rounded"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">Tải file tài liệu (Ảnh / PDF)</label>
+          <input
+            type="file"
+            onChange={(e) => setFile(e.target.files?.[0] || null)}
+            className="w-full p-2 border rounded"
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full py-2 px-4 bg-blue-600 text-white font-medium rounded hover:bg-blue-700 disabled:bg-gray-400"
+        >
+          {loading ? "AI đang tạo câu hỏi, vui lòng đợi..." : "Tạo câu hỏi tự động"}
+        </button>
+      </form>
+
+      {questions.length > 0 && (
+        <div className="mt-8 space-y-4">
+          <h2 className="text-lg font-bold">Danh sách câu hỏi AI vừa tạo:</h2>
+          <pre className="bg-gray-100 p-4 rounded text-sm overflow-auto">
+            {JSON.stringify(questions, null, 2)}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
