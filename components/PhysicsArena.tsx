@@ -536,6 +536,84 @@ export default function PhysicsArena() {
     }
   }
 
+
+  // AI Full Exam Generation: creates the whole exam from the current matrix.
+  async function handleAIFullExam() {
+    if (!aiTopic.trim() && !examTopic.trim()) {
+      setNotice("Vui lòng nhập chủ đề kiểm tra trước khi tạo đề bằng AI.");
+      return;
+    }
+
+    const total = (Object.keys(matrix) as Section[]).reduce(
+      (sum, sec) => sum + (Object.keys(matrix[sec]) as Difficulty[]).reduce(
+        (s, d) => s + Math.max(0, Number(matrix[sec][d] || 0)), 0
+      ), 0
+    );
+    if (!total) {
+      setNotice("Ma trận chưa có số lượng câu hỏi. Hãy nhập số câu theo từng mức độ trước.");
+      return;
+    }
+    if (total > 40) {
+      setNotice("AI chỉ tạo tối đa 40 câu trong một lần để bảo đảm chất lượng và thời gian xử lý.");
+      return;
+    }
+
+    setIsGeneratingAi(true);
+    setAiGeneratedQuestions([]);
+    try {
+      const form = new FormData();
+      form.append("mode", "exam");
+      form.append("topic", (examTopic.trim() || aiTopic.trim()));
+      form.append("grade", aiGrade);
+      form.append("matrix", JSON.stringify(matrix));
+      if (aiDocumentName) form.append("documentName", aiDocumentName);
+      if (aiDocumentText) form.append("documentText", aiDocumentText);
+      if (aiDocumentFile) form.append("file", aiDocumentFile, aiDocumentFile.name);
+
+      const response = await fetch("/api/ai/generate", { method: "POST", body: form });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result?.error || `AI trả về lỗi HTTP ${response.status}.`);
+      }
+
+      const generated = Array.isArray(result?.questions) ? result.questions : [];
+      const normalized: Question[] = generated.map((q: any, index: number) => ({
+        id: `AI_EXAM_${Date.now()}_${index + 1}`,
+        section: q.section as Section,
+        subject: q.subject || "Khoa học tự nhiên",
+        grade: String(q.grade || aiGrade),
+        topic: q.topic || examTopic || aiTopic,
+        difficulty: (q.difficulty || "TH") as Difficulty,
+        content: String(q.content || ""),
+        options: Array.isArray(q.options) ? q.options : undefined,
+        correctOption: q.correctOption || undefined,
+        subTfs: Array.isArray(q.subTfs) ? q.subTfs : undefined,
+        shortAnswer: q.shortAnswer ?? undefined,
+        tolerance: q.tolerance ?? undefined,
+        points: Number(q.points ?? (q.section === "MCQ" ? 0.25 : q.section === "TF" ? 1 : q.section === "SHORT" ? 0.5 : 2))
+      })).filter((q: Question) => q.content.trim());
+
+      if (!normalized.length) {
+        throw new Error("AI không tạo được đề từ ma trận và tài liệu đã cung cấp.");
+      }
+
+      setExam(shuffleExamSections(normalized));
+      setExamTopic(examTopic.trim() || aiTopic.trim());
+      setAnswers({});
+      setSubmitted(false);
+      setEssayScores({});
+      deadlineRef.current = null;
+      setSeconds(examMinutes * 60);
+      setTab("exam");
+      setNotice(`🤖 AI đã tạo ${normalized.length}/${total} câu theo ma trận. Hãy kiểm tra, chỉnh sửa nếu cần rồi bấm SAVE chỉnh sửa.`);
+    } catch (error: any) {
+      console.error("AI full exam error:", error);
+      setNotice(`❌ ${error?.message || "Không thể tạo đề bằng AI."}`);
+    } finally {
+      setIsGeneratingAi(false);
+    }
+  }
+
   async function handleStudentLookup() {
     if (!lookupExamCode.trim() || !lookupStudentName.trim()) {
       alert("Vui lòng nhập đầy đủ Mã đề thi và Họ và tên học sinh để tra cứu!");
@@ -1235,7 +1313,10 @@ const exportSubmissionsExcel = () => {
                         <option value={90}>90 phút</option>
                       </select>
                     </div>
-                    <button onClick={generateExam} style={{ background: "#0d9488", color: "#fff", border: "none", padding: "10px 16px", borderRadius: "8px", fontWeight: "600", cursor: "pointer" }}>Tạo đề thi</button>
+                    <button onClick={generateExam} style={{ background: "#0d9488", color: "#fff", border: "none", padding: "10px 16px", borderRadius: "8px", fontWeight: "600", cursor: "pointer" }}>Tạo đề từ ngân hàng</button>
+                    <button onClick={handleAIFullExam} disabled={isGeneratingAi} style={{ background: "#7c3aed", color: "#fff", border: "none", padding: "10px 16px", borderRadius: "8px", fontWeight: "700", cursor: isGeneratingAi ? "wait" : "pointer", opacity: isGeneratingAi ? 0.7 : 1 }}>
+                      {isGeneratingAi ? "⏳ AI đang tạo đề..." : "🤖 AI tạo toàn bộ đề"}
+                    </button>
                     <button onClick={handlePublishAndGetLink} style={{ background: "#0284c7", color: "#fff", border: "none", padding: "10px 16px", borderRadius: "8px", fontWeight: "600", cursor: "pointer" }}>🔗 Xuất link gửi học sinh</button>
                   </div>
                 </div>
@@ -2149,4 +2230,8 @@ const exportSubmissionsExcel = () => {
               </div>
             </div>
           ))}
-  
+        </section>
+      )}
+    </main>
+  );
+}
