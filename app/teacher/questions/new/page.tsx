@@ -46,7 +46,7 @@ export default function NewQuestionPage() {
 
   return (
     <div className="max-w-4xl mx-auto p-6 bg-white shadow rounded-lg my-8">
-      <h1 className="text-2xl font-bold mb-4">Tạo câu hỏi tự động bằng AI</h1>
+      <h1 className="text-2xl font-bold mb-4">Tạo câu hỏi tự động bằng AI (KHTN)</h1>
       <form onSubmit={handleGenerateFromAI} className="space-y-4">
         <div>
           <label className="block text-sm font-medium mb-1">Chủ đề bài học</label>
@@ -54,7 +54,7 @@ export default function NewQuestionPage() {
             type="text"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            placeholder="Ví dụ: Quang hợp ở thực vật, Năng lượng..."
+            placeholder="Ví dụ: Quang hợp ở thực vật, Đo nhiệt độ, Năng lượng..."
             className="w-full p-2 border rounded"
             required
           />
@@ -103,18 +103,18 @@ export default function NewQuestionPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">Dán văn bản tài liệu (nếu có)</label>
+          <label className="block text-sm font-medium mb-1">Dán văn bản tài liệu tham khảo (nếu có)</label>
           <textarea
             rows={4}
             value={documentText}
             onChange={(e) => setDocumentText(e.target.value)}
-            placeholder="Dán nội dung kiến thức bài học vào đây..."
+            placeholder="Dán nội dung kiến thức bài học trong sách giáo khoa vào đây..."
             className="w-full p-2 border rounded"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">Tải file tài liệu (Ảnh / PDF)</label>
+          <label className="block text-sm font-medium mb-1">Tải file tài liệu (Ảnh / Bài tập PDF)</label>
           <input
             type="file"
             onChange={(e) => setFile(e.target.files?.[0] || null)}
@@ -127,13 +127,13 @@ export default function NewQuestionPage() {
           disabled={loading}
           className="w-full py-2 px-4 bg-blue-600 text-white font-medium rounded hover:bg-blue-700 disabled:bg-gray-400"
         >
-          {loading ? "AI đang tạo câu hỏi, vui lòng đợi..." : "Tạo câu hỏi tự động"}
+          {loading ? "AI đang tạo câu hỏi, vui lòng đợi..." : "Tạo câu hỏi tự động bằng AI"}
         </button>
       </form>
 
       {questions.length > 0 && (
         <div className="mt-8 space-y-4">
-          <h2 className="text-lg font-bold">Danh sách câu hỏi AI vừa tạo:</h2>
+          <h2 className="text-lg font-bold text-green-700">Danh sách câu hỏi AI vừa tạo thành công:</h2>
           <pre className="bg-gray-100 p-4 rounded text-sm overflow-auto">
             {JSON.stringify(questions, null, 2)}
           </pre>
