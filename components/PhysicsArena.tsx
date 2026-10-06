@@ -945,17 +945,13 @@ const exportSubmissionsExcel = () => {
   const examCode = submissions[0]?.exam_id || "KHTN";
   XLSX.writeFile(wb, `Ket_qua_${examCode}.xlsx`);
 };
-return (
-  <main
-    className="app-shell"
-    style={{
-      fontFamily: "Inter, system-ui, Arial, sans-serif",
-      background: "linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)",
-      minHeight: "100vh",
-      paddingBottom: "40px",
-      color: "#0f172a"
-    }}
-  >
+  return <main className="app-shell" style={{
+    fontFamily: "Inter, system-ui, Arial, sans-serif",
+    background: "linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)",
+    minHeight: "100vh",
+    paddingBottom: "40px",
+    color: "#0f172a"
+  }}>
       <header className="topbar" style={{ 
         display: "flex", justifyContent: "space-between", alignItems: "center", 
         padding: "16px 28px", background: "#ffffff", 
