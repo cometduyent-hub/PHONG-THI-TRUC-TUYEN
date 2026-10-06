@@ -936,19 +936,15 @@ const exportSubmissionsExcel = () => {
   
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(rows);
-
   // Tự động chỉnh độ rộng cột vừa với nội dung
   const colWidths = Object.keys(rows[0] || {}).map(key => ({
     wch: Math.max(key.length, ...rows.map(r => String(r[key] || '').length)) + 3
   }));
   ws['!cols'] = colWidths;
-
   XLSX.utils.book_append_sheet(wb, ws, "Kết quả");
-
   const examCode = submissions[0]?.exam_id || "KHTN";
   XLSX.writeFile(wb, `Ket_qua_${examCode}.xlsx`);
 };
-
   return (
        <main className="app-shell" style={{ 
       fontFamily: "Inter, system-ui, Arial, sans-serif", 
