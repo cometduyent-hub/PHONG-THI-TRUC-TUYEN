@@ -918,40 +918,44 @@ export default function PhysicsArena() {
     setSubmissions((data || []) as Submission[]);
   }
 const exportSubmissionsExcel = () => {
-  if (!submissions.length) { setNotice("Chưa có kết quả để xuất Excel."); return; }
-  const rows = submissions.map((s, i) => ({
-    STT: i + 1, 
-    Mã_đề: s.exam_id, 
-    Chủ_đề: examTopic || "", 
-    Họ_tên: s.student_name, 
-    Khối: s.grade || "", 
-    Lớp: s.student_class, 
-    Trường: s.student_school,
-    Điểm_tự_động: s.auto_score, 
-    Điểm_tự_luận: s.essay_score ?? 0, 
-    Tổng_điểm: s.final_score ?? s.auto_score, 
-    Số_lần_thoát: s.exit_count ?? 0,
-    Thời_gian_nộp: s.submitted_at
-  }));
-  
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet(rows);
-  // Tự động chỉnh độ rộng cột vừa với nội dung
-  const colWidths = Object.keys(rows[0] || {}).map(key => ({
-    wch: Math.max(key.length, ...rows.map(r => String(r[key] || '').length)) + 3
-  }));
-  ws['!cols'] = colWidths;
-  XLSX.utils.book_append_sheet(wb, ws, "Kết quả");
-  const examCode = submissions[0]?.exam_id || "KHTN";
-  XLSX.writeFile(wb, `Ket_qua_${examCode}.xlsx`);
-};
-  return <main className="app-shell" style={{
-    fontFamily: "Inter, system-ui, Arial, sans-serif",
-    background: "linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)",
-    minHeight: "100vh",
-    paddingBottom: "40px",
-    color: "#0f172a"
-  }}>
+    if (!submissions.length) { setNotice("Chưa có kết quả để xuất Excel."); return; }
+    const rows = submissions.map((s, i) => ({
+      STT: i + 1,
+      Mã_đề: s.exam_id,
+      Chủ_đề: examTopic || "",
+      Họ_tên: s.student_name,
+      Khối: s.grade || "",
+      Lớp: s.student_class,
+      Trường: s.student_school,
+      Điểm_tự_động: s.auto_score,
+      Điểm_tự_luận: s.essay_score ?? 0,
+      Tổng_điểm: s.final_score ?? s.auto_score,
+      Số_lần_thoát: s.exit_count ?? 0,
+      Thời_gian_nộp: s.submitted_at
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+
+    const colWidths = Object.keys(rows[0] || {}).map(key => ({
+      wch: Math.max(key.length, ...rows.map(r => String(r[key as keyof typeof r] || '').length)) + 3
+    }));
+    ws['!cols'] = colWidths;
+
+    XLSX.utils.book_append_sheet(wb, ws, "Kết quả");
+
+    const examCode = submissions[0]?.exam_id || "KHTN";
+    XLSX.writeFile(wb, `Ket_qua_${examCode}.xlsx`);
+  };
+
+  return (
+    <main className="app-shell" style={{
+      fontFamily: "Inter, system-ui, Arial, sans-serif",
+      background: "linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)",
+      minHeight: "100vh",
+      paddingBottom: "40px",
+      color: "#0f172a"
+    }}>
       <header className="topbar" style={{ 
         display: "flex", justifyContent: "space-between", alignItems: "center", 
         padding: "16px 28px", background: "#ffffff", 
