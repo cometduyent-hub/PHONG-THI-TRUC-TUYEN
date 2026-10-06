@@ -931,8 +931,7 @@ export default function PhysicsArena() {
   };
 
   return (
-   
-    <main className="app-shell" style={{ 
+       <main className="app-shell" style={{ 
       fontFamily: "Inter, system-ui, Arial, sans-serif", 
       background: "linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)", 
       minHeight: "100vh", 
