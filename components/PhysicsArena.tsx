@@ -945,7 +945,6 @@ const exportSubmissionsExcel = () => {
   const examCode = submissions[0]?.exam_id || "KHTN";
   XLSX.writeFile(wb, `Ket_qua_${examCode}.xlsx`);
 };
-
 return (
   <main
     className="app-shell"
