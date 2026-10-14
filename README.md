@@ -89,3 +89,13 @@ GEMINI_API_KEY=...
 # tùy chọn
 GEMINI_MODEL=gemini-2.5-flash
 ```
+
+
+## Bản sửa ma trận, AI và lưu trữ
+
+1. API AI dùng endpoint đúng `/api/ai/generate` tại `app/api/ai/generate/route.ts`. Trước đây route bị đặt nhầm dưới `app/teacher/app/api/...`, khiến client nhận HTTP 404.
+2. Mặc định dùng `gemini-2.5-flash`; có thể đặt `GEMINI_MODEL` trong Vercel. Cấu hình `GEMINI_API_KEY` trong Project Settings → Environment Variables rồi redeploy.
+3. Trang Ma trận có bảng theo Chương, Nội dung/đơn vị kiến thức, 4 loại câu hỏi và 3 mức độ (Biết/Hiểu/Vận dụng). Bảng ma trận tổng hợp cũ vẫn giữ để không làm mất luồng tạo đề từ ngân hàng.
+4. Chạy `supabase/migration_fix_matrix_ai_storage.sql` trong Supabase SQL Editor để bổ sung các cột mà code hiện tại sử dụng khi lưu đề, lưu ma trận và lưu bài nộp. Sao lưu dữ liệu trước khi chạy. Migration này dành cho schema legacy có `exams.id` kiểu text như `supabase_schema_v1.sql`; nếu dự án đang dùng schema mới có `exams.id` kiểu UUID thì cần đối chiếu schema trước, không chạy trực tiếp vì kiểu khóa chính không tương thích với mã đề dạng text.
+5. Không đưa `.env.local` hoặc khóa bí mật vào ZIP/Git. Tệp `.env.example` chỉ chứa giá trị minh họa.
+6. Nếu vẫn báo `Failed to fetch`, kiểm tra URL Supabase và anon key trong Vercel, project Supabase có hoạt động không, và RLS/network policies. Lỗi kết nối trình duyệt không thể khắc phục chỉ bằng code nếu biến môi trường hoặc dịch vụ bên ngoài sai.

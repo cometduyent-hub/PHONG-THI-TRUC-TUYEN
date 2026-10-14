@@ -1,5 +1,5 @@
 "use client";
-import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || "";
@@ -37,6 +37,24 @@ type Matrix = {
   SHORT: Record<Difficulty, number>;
   ESSAY: Record<Difficulty, number>;
 };
+type MatrixRow = {
+  id: string;
+  chapter: string;
+  unit: string;
+  counts: Record<"MCQ" | "TF" | "SHORT" | "ESSAY", Record<"NB" | "TH" | "VD", number>>;
+  pointValues?: Record<"MCQ" | "TF" | "SHORT" | "ESSAY", number>;
+};
+const blankCounts = () => ({
+  MCQ: { NB: 0, TH: 0, VD: 0 },
+  TF: { NB: 0, TH: 0, VD: 0 },
+  SHORT: { NB: 0, TH: 0, VD: 0 },
+  ESSAY: { NB: 0, TH: 0, VD: 0 }
+});
+function matrixRowPoints(row: MatrixRow): number {
+  return (["MCQ", "TF", "SHORT", "ESSAY"] as const).reduce((sum, sec) =>
+    sum + (["NB", "TH", "VD"] as const).reduce((subtotal, d) =>
+      subtotal + Number(row.counts[sec][d] || 0) * (row.pointValues?.[sec] ?? (sec === "MCQ" ? 0.25 : sec === "TF" ? 0.25 : sec === "SHORT" ? 0.5 : 0.5)), 0), 0);
+}
 type AttachmentItem = { name: string; type: string; size: number; data: string; source?: "upload" | "drawing"; };
 type Submission = {
   id?: string;
@@ -141,6 +159,8 @@ const seed: Question[] = [
     points: 2.0 
   }
 ];
+const matrixCell: CSSProperties = { border: "1px solid #cbd5e1", padding: "6px", textAlign: "center", verticalAlign: "middle" };
+const matrixInput: CSSProperties = { width: "100%", minWidth: "115px", boxSizing: "border-box", padding: "5px", border: "1px solid #cbd5e1", borderRadius: "4px", fontSize: "11px" };
 const defaultMatrix: Matrix = {
   MCQ: { NB: 1, TH: 1, VD: 0, VDC: 0 },
   TF: { NB: 0, TH: 1, VD: 0, VDC: 0 },
@@ -230,6 +250,24 @@ export default function PhysicsArena() {
   const [tab, setTab] = useState<"bank" | "matrix" | "exam" | "grading" | "stats" | "ai_gen" | "teacher_accounts">("bank");
   const [questions, setQuestions] = useState<Question[]>(seed);
   const [matrix, setMatrix] = useState<Matrix>(defaultMatrix);
+  const [matrixRows, setMatrixRows] = useState<MatrixRow[]>([
+    { id: "r1", chapter: "Chương II. Ánh sáng", unit: "Bài 5. Khúc xạ ánh sáng (2t)", pointValues: { MCQ: 0.25, TF: 0.25, SHORT: 0.5, ESSAY: 0.5 }, counts: { ...blankCounts(), ESSAY: { NB: 1, TH: 0, VD: 0 } } },
+    { id: "r2", chapter: "Chương II. Ánh sáng", unit: "Bài 6. Phản xạ toàn phần (2t)", counts: { ...blankCounts(), SHORT: { NB: 0, TH: 0, VD: 1 } } },
+    { id: "r3", chapter: "Chương II. Ánh sáng", unit: "Bài 6. Lăng kính (2t)", counts: { ...blankCounts(), MCQ: { NB: 1, TH: 1, VD: 0 }, SHORT: { NB: 0, TH: 1, VD: 0 } } },
+    { id: "r4", chapter: "Chương II. Ánh sáng", unit: "Bài 7. Thấu kính (2t)", counts: { ...blankCounts(), MCQ: { NB: 1, TH: 1, VD: 0 } } },
+    { id: "r5", chapter: "Chương VI. Kim loại và phi kim", unit: "Bài 18. Tính chất của kim loại (3t)", counts: { ...blankCounts(), MCQ: { NB: 1, TH: 1, VD: 0 } } },
+    { id: "r6", chapter: "Chương VI. Kim loại và phi kim", unit: "Bài 19. Dãy hoạt động hóa học (3t)", counts: { ...blankCounts(), MCQ: { NB: 0, TH: 1, VD: 0 } } },
+    { id: "r7", chapter: "Chương VI. Kim loại và phi kim", unit: "Bài 20. Tách kim loại và sử dụng hợp kim (3t)", pointValues: { MCQ: 0.25, TF: 0.25, SHORT: 0.5, ESSAY: 0.5 }, counts: { ...blankCounts(), TF: { NB: 1, TH: 2, VD: 0 }, ESSAY: { NB: 1, TH: 0, VD: 0 } } },
+    { id: "r8", chapter: "Chương VI. Kim loại và phi kim", unit: "Bài 21. Sự khác nhau cơ bản giữa phi kim và kim loại (3t)", pointValues: { MCQ: 0.25, TF: 0.25, SHORT: 0.5, ESSAY: 0.5 }, counts: { ...blankCounts(), TF: { NB: 1, TH: 0, VD: 0 }, ESSAY: { NB: 0, TH: 0, VD: 1 } } },
+    { id: "r9", chapter: "Chương VII. Hydrocarbon. Nhiên liệu", unit: "Bài 22. Giới thiệu về hợp chất hữu cơ (3t)", counts: { ...blankCounts(), SHORT: { NB: 1, TH: 0, VD: 0 } } },
+    { id: "r10", chapter: "Chương VII. Hydrocarbon. Nhiên liệu", unit: "Bài 23. Alkane (2t)", pointValues: { MCQ: 0.25, TF: 0.25, SHORT: 0.5, ESSAY: 0.5 }, counts: { ...blankCounts(), SHORT: { NB: 0, TH: 0, VD: 1 }, ESSAY: { NB: 0, TH: 0, VD: 1 } } },
+    { id: "r11", chapter: "Chương XI. Di truyền học Mendel, cơ sở phân tử của di truyền", unit: "Bài 36. Khái quát về di truyền (1t)", counts: { ...blankCounts(), MCQ: { NB: 1, TH: 0, VD: 0 } } },
+    { id: "r12", chapter: "Chương XI. Di truyền học Mendel, cơ sở phân tử của di truyền", unit: "Bài 37. Các quy luật di truyền của Mendel (4t)", counts: { ...blankCounts(), MCQ: { NB: 1, TH: 0, VD: 0 } } },
+    { id: "r13", chapter: "Chương XI. Di truyền học Mendel, cơ sở phân tử của di truyền", unit: "Bài 38. Nucleic acid và gene (3t)", counts: { ...blankCounts(), MCQ: { NB: 1, TH: 1, VD: 0 } } },
+    { id: "r14", chapter: "Chương XII. Di truyền NST", unit: "Bài 42. NST và bộ NST (2t)", counts: { ...blankCounts(), MCQ: { NB: 0, TH: 1, VD: 0 } } },
+    { id: "r15", chapter: "Chương XII. Di truyền NST", unit: "Bài 43. Nguyên phân và giảm phân (3t)", pointValues: { MCQ: 0.25, TF: 0.25, SHORT: 0.5, ESSAY: 0.25 }, counts: { ...blankCounts(), TF: { NB: 0, TH: 2, VD: 2 }, ESSAY: { NB: 1, TH: 0, VD: 0 } } },
+    { id: "r16", chapter: "Chương XII. Di truyền NST", unit: "Bài 44. NST giới tính và cơ chế xác định giới tính (1t)", pointValues: { MCQ: 0.25, TF: 0.25, SHORT: 0.5, ESSAY: 0.25 }, counts: { ...blankCounts(), ESSAY: { NB: 1, TH: 0, VD: 2 } } }
+  ]);
   const [examMinutes, setExamMinutes] = useState<number>(45);
   const [examTopic, setExamTopic] = useState<string>("Chủ đề kiểm tra"); 
   const [exam, setExam] = useState<Question[]>([]);
@@ -338,7 +376,7 @@ export default function PhysicsArena() {
           setNotice("Chưa cấu hình Supabase. Hãy kiểm tra biến môi trường trên Vercel.");
           return;
         }
-        const { data, error } = await supabase.from("exams").select("questions_data, duration, topic, title").eq("id", examId).single();
+        const { data, error } = await supabase.from("exams").select("questions_data, duration, topic, title, matrix_data").eq("id", examId).single();
         if (error) {
           setNotice("Không tải được đề thi: " + error.message);
           return;
@@ -349,6 +387,7 @@ export default function PhysicsArena() {
           setExam(loadedExam);
           setExamMinutes(duration);
           setExamTopic(String(data?.topic || data?.title || "Chủ đề kiểm tra"));
+          if (Array.isArray(data?.matrix_data) && data.matrix_data.length) setMatrixRows(data.matrix_data as MatrixRow[]);
           deadlineRef.current = null;
           setExamStarted(false);
           setSeconds(duration * 60);
@@ -544,7 +583,10 @@ export default function PhysicsArena() {
       return;
     }
 
-    const total = (Object.keys(matrix) as Section[]).reduce(
+    const rowTotal = matrixRows.reduce((sum, row) => sum + (["MCQ", "TF", "SHORT", "ESSAY"] as const).reduce(
+      (subtotal, sec) => subtotal + (["NB", "TH", "VD"] as const).reduce((n, d) => n + Math.max(0, Number(row.counts[sec][d] || 0)), 0), 0
+    ), 0);
+    const total = rowTotal || (Object.keys(matrix) as Section[]).reduce(
       (sum, sec) => sum + (Object.keys(matrix[sec]) as Difficulty[]).reduce(
         (s, d) => s + Math.max(0, Number(matrix[sec][d] || 0)), 0
       ), 0
@@ -566,6 +608,7 @@ export default function PhysicsArena() {
       form.append("topic", (examTopic.trim() || aiTopic.trim()));
       form.append("grade", aiGrade);
       form.append("matrix", JSON.stringify(matrix));
+      form.append("matrixRows", JSON.stringify(matrixRows));
       if (aiDocumentName) form.append("documentName", aiDocumentName);
       if (aiDocumentText) form.append("documentText", aiDocumentText);
       if (aiDocumentFile) form.append("file", aiDocumentFile, aiDocumentFile.name);
@@ -691,7 +734,8 @@ export default function PhysicsArena() {
       title: "Kiểm tra Khoa học tự nhiên",
       topic: examTopic.trim() || "Chủ đề kiểm tra",
       duration: examMinutes,
-      questions_data: exam
+      questions_data: exam,
+      matrix_data: matrixRows
     }]);
     setIsSavingExam(false);
     setNotice(error ? "Không lưu được chỉnh sửa đề: " + error.message : `💾 Đã lưu toàn bộ chỉnh sửa đề ${examCodeId.trim()} thành công.`);
@@ -806,7 +850,8 @@ export default function PhysicsArena() {
       title: "Kiểm tra Khoa học tự nhiên", 
       topic: examTopic.trim() || "Chủ đề kiểm tra",
       duration: examMinutes,
-      questions_data: exam 
+      questions_data: exam,
+      matrix_data: matrixRows
     }]);
     if (error) {
       alert("Lỗi khi lưu đề lên hệ thống: " + error.message);
@@ -977,7 +1022,7 @@ export default function PhysicsArena() {
     }]);
     if (error) {
       console.error("Không thể lưu kết quả lên Cloud:", error.message);
-      setNotice("Bài đã được chấm nhưng chưa lưu được lên Cloud: " + error.message);
+      setNotice("Bài đã được chấm nhưng chưa lưu được lên Cloud: " + error.message + (String(error.message).toLowerCase().includes("fetch") ? " Kiểm tra NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY trên Vercel, URL project còn hoạt động và quyền RLS của bảng student_submissions." : " Kiểm tra cột/bảng Supabase và chính sách RLS."));
       return;
     }
     setNotice("Bài đã được nộp, chấm tự động và lưu trên Supabase thành công!");
@@ -1325,6 +1370,43 @@ const exportSubmissionsExcel = () => {
                     <label style={{ fontSize: "12px", fontWeight: "800", color: "#0e7490", display: "block", marginBottom: "5px" }}>📚 Chủ đề kiểm tra:</label>
                     <input type="text" value={examTopic} onChange={e => setExamTopic(e.target.value)} placeholder="VD: Chương 3 – Tốc độ" style={{ width: "100%", padding: "9px 10px", borderRadius: "6px", border: "1px solid #67e8f9", background: "#fff", fontSize: "13px" }} />
                   </div>
+                </div>
+                <div style={{ margin: "16px 0", border: "1px solid #99f6e4", borderRadius: "10px", padding: "12px", background: "#f0fdfa" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                    <div><h3 style={{ margin: 0, color: "#0f766e", fontSize: "16px" }}>Ma trận theo mẫu đính kèm</h3>
+                    <p style={{ margin: "4px 0", fontSize: "12px", color: "#475569" }}>Chương → Nội dung/đơn vị kiến thức → TNKQ (nhiều lựa chọn, đúng-sai, trả lời ngắn) → Tự luận; mức độ Biết, Hiểu, Vận dụng.</p></div>
+                    <button onClick={() => setMatrixRows(rows => [...rows, { id: `row-${Date.now()}`, chapter: "", unit: "", counts: blankCounts(), pointValues: { MCQ: 0.25, TF: 0.25, SHORT: 0.5, ESSAY: 0.5 } }])} style={{ background: "#0f766e", color: "#fff", border: 0, borderRadius: "7px", padding: "8px 12px", fontWeight: 700, cursor: "pointer" }}>+ Thêm dòng kiến thức</button>
+                  </div>
+                  <div style={{ overflowX: "auto", marginTop: "10px" }}>
+                    <table style={{ borderCollapse: "collapse", minWidth: "1180px", width: "100%", fontSize: "11px", background: "#fff" }}>
+                      <thead>
+                        <tr style={{ background: "#ccfbf1" }}>
+                          <th rowSpan={2} style={matrixCell}>Chủ đề/Chương</th><th rowSpan={2} style={matrixCell}>Nội dung/đơn vị kiến thức</th>
+                          <th colSpan={3} style={matrixCell}>Nhiều lựa chọn</th><th colSpan={3} style={matrixCell}>Đúng - Sai</th><th colSpan={3} style={matrixCell}>Trả lời ngắn</th><th colSpan={3} style={matrixCell}>Tự luận</th><th rowSpan={2} style={matrixCell}>Tổng câu/ý</th><th rowSpan={2} style={matrixCell}>Điểm</th><th rowSpan={2} style={matrixCell}>Tỉ lệ % điểm</th><th rowSpan={2} style={matrixCell}>Xóa</th>
+                        </tr>
+                        <tr style={{ background: "#f0fdfa" }}>{Array.from({length:4}).flatMap((_,i)=>["Biết","Hiểu","Vận dụng"].map((d,j)=><th key={`${i}-${j}`} style={matrixCell}>{d}</th>))}</tr>
+                      </thead>
+                      <tbody>
+                        {matrixRows.map(row => {
+                          const totalQuestions = (["MCQ","TF","SHORT","ESSAY"] as const).reduce((sum, sec) => sum + (["NB","TH","VD"] as const).reduce((n,d)=>n+Number(row.counts[sec][d]||0),0),0);
+                          const points = matrixRowPoints(row);
+                          const totalMatrixPoints = matrixRows.reduce((sum, item) => sum + matrixRowPoints(item), 0);
+                          return <tr key={row.id}>
+                            <td style={matrixCell}><input aria-label="Chủ đề hoặc chương" value={row.chapter} onChange={e=>setMatrixRows(rows=>rows.map(r=>r.id===row.id?{...r,chapter:e.target.value}:r))} placeholder="Chương..." style={matrixInput}/></td>
+                            <td style={matrixCell}><input aria-label="Nội dung đơn vị kiến thức" value={row.unit} onChange={e=>setMatrixRows(rows=>rows.map(r=>r.id===row.id?{...r,unit:e.target.value}:r))} placeholder="Bài..." style={{...matrixInput,minWidth:"210px"}}/></td>
+                            {(["MCQ","TF","SHORT","ESSAY"] as const).flatMap(sec=>(["NB","TH","VD"] as const).map(d=><td key={`${sec}-${d}`} style={matrixCell}><input aria-label={`${sec} ${d}`} type="number" min="0" max="40" value={row.counts[sec][d]} onChange={e=>{const v=Math.max(0,Math.min(40,Math.floor(Number(e.target.value)||0)));setMatrixRows(rows=>rows.map(r=>r.id===row.id?{...r,counts:{...r.counts,[sec]:{...r.counts[sec],[d]:v}}}:r));}} style={{...matrixInput,width:"48px",textAlign:"center"}}/></td>))}
+                            <td style={matrixCell}><b>{totalQuestions}</b></td><td style={matrixCell}><b>{points.toFixed(2)}</b></td><td style={matrixCell}><b>{totalMatrixPoints ? (points / totalMatrixPoints * 100).toFixed(1) : "0.0"}%</b></td>
+                            <td style={matrixCell}><button onClick={()=>setMatrixRows(rows=>rows.filter(r=>r.id!==row.id))} style={{color:"#b91c1c",border:0,background:"transparent",cursor:"pointer"}}>Xóa</button></td>
+                          </tr>;
+                        })}
+                      </tbody>
+                      <tfoot><tr style={{background:"#ccfbf1"}}><td colSpan={2} style={matrixCell}><b>TỔNG</b></td>
+                        {(["MCQ","TF","SHORT","ESSAY"] as const).flatMap(sec=>(["NB","TH","VD"] as const).map(d=><td key={`${sec}-${d}`} style={matrixCell}><b>{matrixRows.reduce((n,r)=>n+Number(r.counts[sec][d]||0),0)}</b></td>))}
+                        <td style={matrixCell}><b>{matrixRows.reduce((sum,r)=>sum+(["MCQ","TF","SHORT","ESSAY"] as const).reduce((a,sec)=>a+(["NB","TH","VD"] as const).reduce((b,d)=>b+Number(r.counts[sec][d]||0),0),0),0)}</b></td>
+                        <td style={matrixCell}><b>{matrixRows.reduce((sum,r)=>sum+matrixRowPoints(r),0).toFixed(2)}</b></td><td style={matrixCell}><b>{matrixRows.reduce((sum,r)=>sum+matrixRowPoints(r),0) ? "100%" : "0%"}</b></td><td style={matrixCell}>—</td></tr></tfoot>
+                    </table>
+                  </div>
+                  <p style={{ fontSize: "11px", color: "#64748b", marginBottom: 0 }}>Bảng ma trận theo chương/bài được dùng khi tạo đề AI. Bảng phân bổ tổng hợp bên dưới vẫn được giữ để tương thích chức năng tạo đề từ ngân hàng hiện có.</p>
                 </div>
                 {(Object.keys(matrix) as Section[]).map(sec => (
                   <div key={sec} style={{ display: "grid", gridTemplateColumns: "220px repeat(4, 1fr)", gap: "12px", alignItems: "center", marginBottom: "12px", background: "#f8fafc", padding: "12px", borderRadius: "8px", border: "1px solid #cbd5e1" }}>
