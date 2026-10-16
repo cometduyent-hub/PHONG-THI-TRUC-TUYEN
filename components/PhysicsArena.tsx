@@ -850,7 +850,7 @@ export default function PhysicsArena() {
       return;
     }
     const { error } = await supabase.from('exams').upsert([{ 
-      id: examCodeId.trim(), 
+      access_code: examCodeId.trim(), 
       title: "Kiểm tra Khoa học tự nhiên", 
       topic: examTopic.trim() || "Chủ đề kiểm tra",
       duration_minutes: examMinutes,
