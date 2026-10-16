@@ -131,21 +131,94 @@ alter table exam_sessions enable row level security;
 alter table student_answers enable row level security;
 alter table tf_scoring_rules enable row level security;
 
--- Development-friendly policies. Tighten these before production deployment.
-create policy if not exists "authenticated read profiles" on profiles for select to authenticated using (true);
-create policy if not exists "own profile insert" on profiles for insert to authenticated with check (id = auth.uid());
-create policy if not exists "teachers manage questions" on questions for all to authenticated using (teacher_id = auth.uid() or teacher_id is null) with check (teacher_id = auth.uid() or teacher_id is null);
-create policy if not exists "authenticated read options" on question_options for select to authenticated using (true);
-create policy if not exists "authenticated manage options" on question_options for all to authenticated using (true) with check (true);
-create policy if not exists "authenticated read tf" on true_false_items for select to authenticated using (true);
-create policy if not exists "authenticated manage tf" on true_false_items for all to authenticated using (true) with check (true);
-create policy if not exists "teachers manage exams" on exams for all to authenticated using (teacher_id = auth.uid() or teacher_id is null) with check (teacher_id = auth.uid() or teacher_id is null);
-create policy if not exists "authenticated read exam questions" on exam_questions for select to authenticated using (true);
-create policy if not exists "teachers manage exam questions" on exam_questions for all to authenticated using (true) with check (true);
-create policy if not exists "authenticated read classes" on classes for select to authenticated using (true);
-create policy if not exists "teachers manage classes" on classes for all to authenticated using (teacher_id = auth.uid() or teacher_id is null) with check (teacher_id = auth.uid() or teacher_id is null);
-create policy if not exists "authenticated read students" on students for select to authenticated using (true);
-create policy if not exists "teachers manage students" on students for all to authenticated using (true) with check (true);
-create policy if not exists "authenticated manage sessions" on exam_sessions for all to authenticated using (true) with check (true);
-create policy if not exists "authenticated manage answers" on student_answers for all to authenticated using (true) with check (true);
-create policy if not exists "authenticated read scoring" on tf_scoring_rules for select to authenticated using (true);
+-- PROFILES
+DROP POLICY IF EXISTS "authenticated read profiles" ON public.profiles;
+CREATE POLICY "authenticated read profiles"
+ON public.profiles FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "own profile insert" ON public.profiles;
+CREATE POLICY "own profile insert"
+ON public.profiles FOR INSERT TO authenticated
+WITH CHECK (id = auth.uid());
+
+-- QUESTIONS
+DROP POLICY IF EXISTS "teachers manage questions" ON public.questions;
+CREATE POLICY "teachers manage questions"
+ON public.questions FOR ALL TO authenticated
+USING (teacher_id = auth.uid() OR teacher_id IS NULL)
+WITH CHECK (teacher_id = auth.uid() OR teacher_id IS NULL);
+
+-- QUESTION OPTIONS
+DROP POLICY IF EXISTS "authenticated read options" ON public.question_options;
+CREATE POLICY "authenticated read options"
+ON public.question_options FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "authenticated manage options" ON public.question_options;
+CREATE POLICY "authenticated manage options"
+ON public.question_options FOR ALL TO authenticated
+USING (true) WITH CHECK (true);
+
+-- TRUE/FALSE ITEMS
+DROP POLICY IF EXISTS "authenticated read tf" ON public.true_false_items;
+CREATE POLICY "authenticated read tf"
+ON public.true_false_items FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "authenticated manage tf" ON public.true_false_items;
+CREATE POLICY "authenticated manage tf"
+ON public.true_false_items FOR ALL TO authenticated
+USING (true) WITH CHECK (true);
+
+-- EXAMS
+DROP POLICY IF EXISTS "teachers manage exams" ON public.exams;
+CREATE POLICY "teachers manage exams"
+ON public.exams FOR ALL TO authenticated
+USING (teacher_id = auth.uid() OR teacher_id IS NULL)
+WITH CHECK (teacher_id = auth.uid() OR teacher_id IS NULL);
+
+-- EXAM QUESTIONS
+DROP POLICY IF EXISTS "authenticated read exam questions" ON public.exam_questions;
+CREATE POLICY "authenticated read exam questions"
+ON public.exam_questions FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "teachers manage exam questions" ON public.exam_questions;
+CREATE POLICY "teachers manage exam questions"
+ON public.exam_questions FOR ALL TO authenticated
+USING (true) WITH CHECK (true);
+
+-- CLASSES
+DROP POLICY IF EXISTS "authenticated read classes" ON public.classes;
+CREATE POLICY "authenticated read classes"
+ON public.classes FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "teachers manage classes" ON public.classes;
+CREATE POLICY "teachers manage classes"
+ON public.classes FOR ALL TO authenticated
+USING (teacher_id = auth.uid() OR teacher_id IS NULL)
+WITH CHECK (teacher_id = auth.uid() OR teacher_id IS NULL);
+
+-- STUDENTS
+DROP POLICY IF EXISTS "authenticated read students" ON public.students;
+CREATE POLICY "authenticated read students"
+ON public.students FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "teachers manage students" ON public.students;
+CREATE POLICY "teachers manage students"
+ON public.students FOR ALL TO authenticated
+USING (true) WITH CHECK (true);
+
+-- EXAM SESSIONS
+DROP POLICY IF EXISTS "authenticated manage sessions" ON public.exam_sessions;
+CREATE POLICY "authenticated manage sessions"
+ON public.exam_sessions FOR ALL TO authenticated
+USING (true) WITH CHECK (true);
+
+-- STUDENT ANSWERS
+DROP POLICY IF EXISTS "authenticated manage answers" ON public.student_answers;
+CREATE POLICY "authenticated manage answers"
+ON public.student_answers FOR ALL TO authenticated
+USING (true) WITH CHECK (true);
+
+-- TF SCORING RULES
+DROP POLICY IF EXISTS "authenticated read scoring" ON public.tf_scoring_rules;
+CREATE POLICY "authenticated read scoring"
+ON public.tf_scoring_rules FOR SELECT TO authenticated USING (true);
