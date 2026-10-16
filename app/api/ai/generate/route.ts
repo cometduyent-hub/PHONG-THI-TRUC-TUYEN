@@ -79,7 +79,7 @@ Mỗi câu gồm section (MCQ/TF/SHORT/ESSAY), grade, topic, difficulty (NB/TH/V
       instruction = `Bạn là chuyên gia biên soạn câu hỏi Khoa học tự nhiên THCS. Tạo đúng ${count} câu cho lớp ${grade}, chủ đề ${topic}, loại ${section}. MCQ có 4 lựa chọn A-D và correctOption; TF có 4 ý a-d với key boolean; SHORT có shortAnswer; ESSAY có nội dung và điểm. Mỗi câu phải có section,grade,topic,difficulty (NB/TH/VD/VDC),content,points. Trả về JSON thuần dạng {"questions":[...]}.`;
     }
     parts.push({ text: instruction + "\nChỉ trả về JSON hợp lệ, không dùng Markdown." });
-    const modelName = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
+    const modelName = process.env.GEMINI_MODEL?.trim() || "gemini-3.8-flash";
     const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({
       model: modelName,
       generationConfig: { responseMimeType: "application/json" }
