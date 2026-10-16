@@ -849,7 +849,7 @@ export default function PhysicsArena() {
       id: examCodeId.trim(), 
       title: "Kiểm tra Khoa học tự nhiên", 
       topic: examTopic.trim() || "Chủ đề kiểm tra",
-      duration: examMinutes,
+      duration_minutes: examMinutes,
       questions_data: exam,
       matrix_data: matrixRows
     }]);
