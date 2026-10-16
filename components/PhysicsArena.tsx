@@ -376,14 +376,18 @@ export default function PhysicsArena() {
           setNotice("Chưa cấu hình Supabase. Hãy kiểm tra biến môi trường trên Vercel.");
           return;
         }
-        const { data, error } = await supabase.from("exams").select("questions_data, duration, topic, title, matrix_data").eq("id", examId).single();
+        const { data, error } = await supabase
+  .from("exams")
+  .select("questions_data, duration_minutes, topic, title, matrix_data")
+  .eq("access_code", examId)
+  .single();
         if (error) {
           setNotice("Không tải được đề thi: " + error.message);
           return;
         }
         if (data?.questions_data) {
           const loadedExam = data.questions_data as Question[];
-          const duration = Number(data.duration || 45);
+          const duration = Number(data.duration_minutes || 45);
           setExam(loadedExam);
           setExamMinutes(duration);
           setExamTopic(String(data?.topic || data?.title || "Chủ đề kiểm tra"));
