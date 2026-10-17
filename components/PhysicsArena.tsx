@@ -733,7 +733,8 @@ export default function PhysicsArena() {
     if (!supabase) { setNotice("Chưa cấu hình Supabase."); return; }
     if (!examCodeId.trim() || exam.length === 0) { setNotice("Chưa có mã đề hoặc đề để lưu."); return; }
     setIsSavingExam(true);
- const { error } = await supabase.from("exams").upsert([{
+ 
+const { error } = await supabase.from("exams").upsert([{
   access_code: examCodeId.trim(),
   title: "Kiểm tra Khoa học tự nhiên",
   topic: examTopic.trim() || "Chủ đề kiểm tra",
@@ -743,6 +744,7 @@ export default function PhysicsArena() {
 }], {
   onConflict: "access_code"
 });
+
     setIsSavingExam(false);
     setNotice(error ? "Không lưu được chỉnh sửa đề: " + error.message : `💾 Đã lưu toàn bộ chỉnh sửa đề ${examCodeId.trim()} thành công.`);
   }
